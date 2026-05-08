@@ -29,9 +29,19 @@
             <id>CPK</id>
           </enum>
         </color>
+        <color id="ID4">
+          <id>DocType</id>
+          <enum>
+            <id>TaskDA</id>
+            <id>MaterialsSI</id>
+            <id>收款单</id>
+            <id>预算单</id>
+          </enum>
+        </color>
       </block>
     </globbox>
 
+    <!-- 每个子项目对应一个 page -->
     <page id="PAGE1">
       <pageattr name="新建阶段"/>
       <place id="P1">
@@ -52,21 +62,25 @@
         <condition><text>true</text></condition>
       </trans>
       <arc id="A1" orientation="PtoT">
+        <posattr x="0" y="0"/>
         <transend idref="T1"/>
         <placeend idref="P1"/>
         <annot><text>1`新建</text></annot>
       </arc>
       <arc id="A2" orientation="TtoP">
+        <posattr x="0" y="0"/>
         <transend idref="T1"/>
         <placeend idref="P2"/>
         <annot><text>1`新建</text></annot>
       </arc>
     </page>
 
+    <!-- 跨子项目 FS 规则通过融合库所（fusion place）表达 -->
     <page id="PAGE2">
       <pageattr name="水电阶段"/>
       <place id="P3">
         <posattr x="100" y="100"/>
+        <!-- fusion set 引用 PAGE1 的 P2 -->
         <text>新建_TaskDA_完成_融合</text>
         <type><id>SubProjectType</id></type>
         <initmark><text>empty</text></initmark>
@@ -77,6 +91,7 @@
         <condition><text>true</text></condition>
       </trans>
       <arc id="A3" orientation="PtoT">
+        <posattr x="0" y="0"/>
         <transend idref="T2"/>
         <placeend idref="P3"/>
         <annot><text>1`新建</text></annot>
