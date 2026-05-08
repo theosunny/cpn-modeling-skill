@@ -50,13 +50,12 @@ button { padding:5px 13px; border-radius:6px; font-size:11px; cursor:pointer;
 button:hover { background:var(--btn-h); }
 button.active { background:var(--act); color:var(--act-t); border-color:var(--act); }
 .sep { width:1px; height:18px; background:var(--sep); margin:0 3px; }
-.theme-row { display:flex; gap:0; margin-top:12px; align-items:center; }
-.theme-lbl { font-size:11px; color:var(--dim); margin-right:10px; }
-.th-btn { display:flex; flex-direction:column; align-items:center; gap:3px; margin-right:12px; cursor:pointer; }
-.th-swatch { width:22px; height:22px; border-radius:50%; border:2px solid transparent; transition:all .2s; }
-.th-btn.active .th-swatch { border-color:var(--text); transform:scale(1.18); }
-.th-name { font-size:10px; color:var(--dim); }
-.th-btn.active .th-name { color:var(--text); }
+.canvas-wrap { position:relative; display:inline-block; }
+#theme-sel { position:absolute; top:10px; right:10px; z-index:10;
+  padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer;
+  border:1px solid var(--btn-b); background:var(--btn); color:var(--btn-t);
+  font-family:inherit; letter-spacing:.04em; outline:none;
+  transition:background .2s,color .2s,border-color .2s; }
 .legend { display:flex; gap:16px; margin-top:11px; font-size:11px; color:var(--dim); flex-wrap:wrap; align-items:center; }
 .li { display:flex; align-items:center; gap:5px; }
 </style>
@@ -64,7 +63,10 @@ button.active { background:var(--act); color:var(--act-t); border-color:var(--ac
 <body>
 <h1>CPN 模型：<span id="pid"></span></h1>
 <div class="sub">着色 Petri 网</div>
+<div class="canvas-wrap">
 <canvas id="c"></canvas>
+<select id="theme-sel" onchange="applyTheme(THEMES[this.selectedIndex])"></select>
+</div>
 <div class="row">
   <button id="btn-auto" onclick="toggleAuto()">▶ 自动运行</button>
   <button onclick="stepOnce()">单步</button>
@@ -74,10 +76,6 @@ button.active { background:var(--act); color:var(--act-t); border-color:var(--ac
   <button onclick="setSpeed(1400)" id="sp-slow">慢</button>
   <button onclick="setSpeed(800)"  id="sp-mid" class="active">中</button>
   <button onclick="setSpeed(360)"  id="sp-fast">快</button>
-</div>
-<div class="theme-row">
-  <span class="theme-lbl">主题</span>
-  <div id="theme-btns" style="display:flex"></div>
 </div>
 <div class="legend">
   <div class="li"><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>库所</div>
@@ -124,16 +122,16 @@ function applyTheme(theme) {
   T = theme;
   Object.entries(theme.css).forEach(([k,v]) => document.documentElement.style.setProperty(k,v));
   canvas.style.background = theme.cvsBg;
-  document.querySelectorAll('.th-btn').forEach((b,i) => b.classList.toggle('active', i===THEMES.indexOf(theme)));
+  const sel = document.getElementById('theme-sel');
+  if (sel) sel.selectedIndex = THEMES.indexOf(theme);
 }
 
-const tbWrap = document.getElementById('theme-btns');
+const sel = document.getElementById('theme-sel');
 THEMES.forEach((t,i) => {
-  const wrap = document.createElement('div');
-  wrap.className = 'th-btn'+(i===0?' active':'');
-  wrap.innerHTML = `<div class="th-swatch" style="background:${t.swatch}"></div><span class="th-name">${t.name}</span>`;
-  wrap.onclick = () => applyTheme(t);
-  tbWrap.appendChild(wrap);
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = `${t.name} · ${t.sub}`;
+  sel.appendChild(opt);
 });
 applyTheme(THEMES[0]);
 ```
