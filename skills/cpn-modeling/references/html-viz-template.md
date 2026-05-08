@@ -116,7 +116,6 @@ const THEMES = [
 
 let T = THEMES[0];
 const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
 
 function applyTheme(theme) {
   T = theme;
@@ -164,7 +163,12 @@ allNodes.forEach(n => {
 
 const maxX=Math.max(...Object.values(positions).map(p=>p.x))+100;
 const maxY=Math.max(...Object.values(positions).map(p=>p.y))+80;
-canvas.width=Math.max(maxX,600); canvas.height=Math.max(maxY,400);
+const cW=Math.max(maxX,600), cH=Math.max(maxY,400);
+const dpr=window.devicePixelRatio||1;
+canvas.width=cW*dpr; canvas.height=cH*dpr;
+canvas.style.width=cW+'px'; canvas.style.height=cH+'px';
+const ctx=canvas.getContext('2d');
+ctx.scale(dpr,dpr);
 
 // ── 变迁输入输出表（从 arcs 推导）──
 const tIn={}, tOut={};
