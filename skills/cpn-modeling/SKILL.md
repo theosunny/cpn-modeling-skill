@@ -5,7 +5,7 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 
 # CPN 建模
 
-从自然语言业务场景描述中提取 CPN 模型，并行输出三种格式。
+从自然语言业务场景描述中提取 CPN 模型，依次输出三种格式。
 
 ## 提取规则
 
@@ -35,6 +35,7 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 - 两类规则：
   - `cross_subproject`：不同子项目间的单据依赖
   - `cross_chain`：同一子项目内不同交易链间的依赖
+  - `intra_chain`：同一交易链内的工序顺序依赖（如步骤 A 必须先于步骤 B）
 
 ---
 
@@ -61,11 +62,7 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 - 跨子项目 FS 规则用融合库所（fusion place）表达
 - 跨交易链 FS 规则用变迁的 `<condition>` 守卫条件表达
 
-用代码块包裹：
-```xml
-<?xml version="1.0" ...>
-...
-```
+输出完整 XML，格式严格参考 `references/cpn-xml-template.md` 中的模板结构。
 
 ### 第三部分：HTML 可视化
 
@@ -84,6 +81,7 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 1. JSON 中的 `fs_rules` 是否覆盖了描述中所有"必须等待/才能"的依赖关系
 2. CPN XML 中每个 `<page>` 是否与 JSON 中的子项目一一对应
 3. HTML 中的 `__CPN_DATA__` 是否已替换为实际 JSON
+4. CPN XML 中每条 `cross_subproject` FS 规则是否有对应的融合库所，每条 `cross_chain` 规则是否有对应的 `<condition>` 守卫条件
 
 ---
 
