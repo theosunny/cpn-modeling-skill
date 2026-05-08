@@ -1,14 +1,23 @@
 # HTML 可视化模板参考（动态 Canvas 版）
 
-Claude 生成 HTML 可视化时，使用以下模板结构。将 `__CPN_DATA__` 替换为实际的 JSON 数据对象。
+Claude 生成 HTML 可视化时，使用以下模板结构。将 `__CPN_DATA__` 替换为实际 JSON 数据对象。
 
-## 关键规则
+## 核心规则
 
-- 使用 Canvas 渲染，**绘制顺序**：泳道背景 → 弧 → 变迁 → 库所 → 文字（文字最后画，永不被遮挡）
-- 自动布局：BFS 拓扑排序决定 x 坐标，subproject 索引决定 y 坐标
-- Token 动画：飞行粒子经过变迁节点再落入目标库所，带发光拖尾
-- P6 等"资源库所"若有初始 token，务必在 `places` 数组中设置 `tokens:N`
-- `firingTrans` 清除条件：`animTokens.filter(t=>!t.done).length === 0`（必须全部落地）
+1. **渲染引擎**：Canvas（不用 SVG），绘制顺序：泳道 → 弧 → 变迁形状 → 库所形状 → **所有文字最后统一画**，文字永不被遮挡
+2. **动画**：粒子用线性进度值 `prog: 0→1`，每帧 `prog += dt / duration`，`prog >= 1` 时强制落地。**禁止**用指数逼近（`x += (target-x) * k`）——永远无法精确到达，必然卡死
+3. **解锁条件**：`particles.every(pk => pk.done)` 全部落地才清除 `firingId`，**不能**用 `length <= 1`
+4. **资源库所**：有初始 token 的库所（如"缴费待完成"）必须在 `places` 中设 `tokens: N`，否则多输入变迁永远无法触发
+5. **主题**：提供4套宋式配色，CSS 变量驱动，切换时同步更新 canvas 背景
+
+## 四套宋式主题
+
+| 主题 | 灵感 | 背景 | 特点 |
+|------|------|------|------|
+| 天青 | 汝窑青瓷 | 暖米白 | 浅色，雅致清透 |
+| 水墨 | 宋代绘画 | 近黑 | 深色，墨色淡雅 |
+| 松烟 | 建盏茶器 | 暖黑 | 深色，琥珀金调 |
+| 霁蓝 | 官窑霁蓝 | 深蓝黑 | 深色，钴蓝冷峻 |
 
 ## 模板
 
@@ -19,38 +28,63 @@ Claude 生成 HTML 可视化时，使用以下模板结构。将 `__CPN_DATA__` 
 <meta charset="UTF-8">
 <title>CPN 模型可视化</title>
 <style>
-* { box-sizing: border-box; }
-body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background:#0f172a; margin:0; padding:20px; color:#e2e8f0; }
-h1 { font-size:18px; margin-bottom:2px; color:#f1f5f9; }
-.subtitle { color:#64748b; font-size:13px; margin-bottom:16px; }
-canvas { border-radius:12px; display:block; background:#1e293b; border:1px solid #334155; }
-.controls { display:flex; gap:10px; margin-top:12px; align-items:center; flex-wrap:wrap; }
-button { padding:6px 16px; border-radius:6px; border:1px solid #475569; background:#1e293b; color:#cbd5e1; cursor:pointer; font-size:13px; transition:all .15s; }
-button:hover { background:#334155; color:#f1f5f9; }
-button.active { background:#6366f1; border-color:#6366f1; color:white; }
-.legend { display:flex; gap:14px; margin-top:10px; font-size:12px; color:#94a3b8; flex-wrap:wrap; align-items:center; }
-.legend-item { display:flex; align-items:center; gap:5px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f0ece3; --cvs:#e8e3d8; --border:#cfc8bc;
+  --text:#2a2418; --sub:#7a7060; --dim:#b0a898;
+  --btn:#e4dfd4; --btn-t:#4a4030; --btn-b:#c8c0b0;
+  --btn-h:#dad4c8; --act:#5a9080; --act-t:#f0ece3; --sep:#cfc8bc;
+}
+body { font-family:'PingFang SC','Noto Sans SC','Microsoft YaHei',sans-serif;
+  background:var(--bg); color:var(--text); padding:28px;
+  min-height:100vh; transition:background .35s,color .35s; }
+h1 { font-size:16px; font-weight:600; letter-spacing:.06em; }
+.sub { font-size:11px; color:var(--sub); margin-top:4px; letter-spacing:.04em; }
+canvas { display:block; border-radius:16px; border:1px solid var(--border);
+  background:var(--cvs); transition:background .35s,border-color .35s;
+  box-shadow:0 4px 40px rgba(0,0,0,.08); margin-top:16px; }
+.row { display:flex; gap:7px; margin-top:13px; align-items:center; flex-wrap:wrap; }
+button { padding:5px 13px; border-radius:6px; font-size:11px; cursor:pointer;
+  border:1px solid var(--btn-b); background:var(--btn); color:var(--btn-t);
+  transition:all .15s; font-family:inherit; }
+button:hover { background:var(--btn-h); }
+button.active { background:var(--act); color:var(--act-t); border-color:var(--act); }
+.sep { width:1px; height:18px; background:var(--sep); margin:0 3px; }
+.theme-row { display:flex; gap:0; margin-top:12px; align-items:center; }
+.theme-lbl { font-size:11px; color:var(--dim); margin-right:10px; }
+.th-btn { display:flex; flex-direction:column; align-items:center; gap:3px; margin-right:12px; cursor:pointer; }
+.th-swatch { width:22px; height:22px; border-radius:50%; border:2px solid transparent; transition:all .2s; }
+.th-btn.active .th-swatch { border-color:var(--text); transform:scale(1.18); }
+.th-name { font-size:10px; color:var(--dim); }
+.th-btn.active .th-name { color:var(--text); }
+.legend { display:flex; gap:16px; margin-top:11px; font-size:11px; color:var(--dim); flex-wrap:wrap; align-items:center; }
+.li { display:flex; align-items:center; gap:5px; }
 </style>
 </head>
 <body>
 <h1>CPN 模型：<span id="pid"></span></h1>
-<p class="subtitle">着色 Petri 网</p>
+<div class="sub">着色 Petri 网</div>
 <canvas id="c"></canvas>
-<div class="controls">
+<div class="row">
   <button id="btn-auto" onclick="toggleAuto()">▶ 自动运行</button>
-  <button onclick="stepOnce()">单步执行</button>
+  <button onclick="stepOnce()">单步</button>
   <button onclick="resetSim()">重置</button>
-  <span style="color:#64748b;font-size:12px">速度：</span>
-  <button onclick="setSpeed(1200)" id="sp-slow">慢</button>
-  <button onclick="setSpeed(700)"  id="sp-mid" class="active">中</button>
-  <button onclick="setSpeed(350)"  id="sp-fast">快</button>
+  <div class="sep"></div>
+  <span style="font-size:11px;color:var(--dim)">速度</span>
+  <button onclick="setSpeed(1400)" id="sp-slow">慢</button>
+  <button onclick="setSpeed(800)"  id="sp-mid" class="active">中</button>
+  <button onclick="setSpeed(360)"  id="sp-fast">快</button>
+</div>
+<div class="theme-row">
+  <span class="theme-lbl">主题</span>
+  <div id="theme-btns" style="display:flex"></div>
 </div>
 <div class="legend">
-  <div class="legend-item"><div style="width:12px;height:12px;border-radius:50%;border:2px solid #94a3b8;background:transparent"></div>库所</div>
-  <div class="legend-item"><div style="width:14px;height:9px;border-radius:2px;background:#94a3b8"></div>变迁</div>
-  <div class="legend-item"><div style="width:10px;height:10px;border-radius:50%;background:#fbbf24"></div>Token</div>
-  <div class="legend-item"><div style="width:28px;height:2px;background:#94a3b8"></div>弧</div>
-  <div class="legend-item"><div style="width:28px;height:0;border-top:2px dashed #ef4444"></div>依赖关系</div>
+  <div class="li"><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>库所</div>
+  <div class="li"><svg width="16" height="10"><rect width="16" height="10" rx="2" fill="currentColor" opacity=".5"/></svg>变迁</div>
+  <div class="li"><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>Token</div>
+  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="currentColor" stroke-width="1.5"/></svg>弧</div>
+  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4,3"/></svg>依赖</div>
 </div>
 <script>
 const data = __CPN_DATA__;
@@ -58,257 +92,310 @@ document.getElementById('pid').textContent = data.project_id;
 ```
 
 ```js
-// ── 颜色配置 ──
-const PALETTE = ['#6366f1','#0891b2','#d97706','#059669','#dc2626','#7c3aed','#0d9488','#b45309'];
-const GLOW    = ['#818cf8','#38bdf8','#fbbf24','#34d399','#f87171','#a78bfa','#2dd4bf','#fcd34d'];
-const allNodes = [...data.places, ...data.transitions];
-const spList   = [...new Set(allNodes.map(n => n.subproject).filter(Boolean))];
-const chList   = [...new Set(allNodes.map(n => n.chain).filter(Boolean))];
-const chainColor = {}, chainGlow = {};
-chList.forEach((ch, i) => { chainColor[ch] = PALETTE[i % PALETTE.length]; chainGlow[ch] = GLOW[i % GLOW.length]; });
+// ── 四套宋式主题 ──
+const THEMES = [
+  { id:'tiānqīng',name:'天青',sub:'汝窑',swatch:'#7aaa98',
+    css:{'--bg':'#f0ece3','--cvs':'#e8e3d8','--border':'#cfc8bc','--text':'#2a2418','--sub':'#7a7060','--dim':'#b0a898','--btn':'#e4dfd4','--btn-t':'#4a4030','--btn-b':'#c8c0b0','--btn-h':'#dad4c8','--act':'#5a9080','--act-t':'#f0ece3','--sep':'#cfc8bc'},
+    cvsBg:'#e8e3d8', dark:false, laneA:.08,
+    chains:{"挂号链":{s:"#5a9a88",g:"#78b8a0",f:"#daeee8"},"诊疗链":{s:"#6888a0",g:"#88a8c0",f:"#d8e4f0"},"收费链":{s:"#9a7850",g:"#b89870",f:"#ecddd0"},"药房链":{s:"#8a7898",g:"#a898b8",f:"#e4dce8"}},
+    dep:'#b05030' },
+  { id:'shuǐmò',name:'水墨',sub:'宋画',swatch:'#4a4a52',
+    css:{'--bg':'#0e0e10','--cvs':'#131315','--border':'#242428','--text':'#c8c0b0','--sub':'#5a5448','--dim':'#4a4840','--btn':'#1c1c1e','--btn-t':'#908880','--btn-b':'#2c2c30','--btn-h':'#242428','--act':'#706860','--act-t':'#e8e0d0','--sep':'#2c2c30'},
+    cvsBg:'#131315', dark:true, laneA:.06,
+    chains:{"挂号链":{s:"#90a8b0",g:"#b0c8d0",f:"#1a2428"},"诊疗链":{s:"#90a898",g:"#b0c8b8",f:"#1a2420"},"收费链":{s:"#b09880",g:"#d0b8a0",f:"#28201a"},"药房链":{s:"#9890a8",g:"#b8b0c8",f:"#201a28"}},
+    dep:'#c06040' },
+  { id:'jiànzhǎn',name:'松烟',sub:'建盏',swatch:'#c8922a',
+    css:{'--bg':'#0a0806','--cvs':'#100e0a','--border':'#2a2018','--text':'#c8a870','--sub':'#5a4830','--dim':'#4a3820','--btn':'#1a1510','--btn-t':'#a08060','--btn-b':'#3a2e1e','--btn-h':'#2a1f10','--act':'#8a6020','--act-t':'#f0d890','--sep':'#3a2e1e'},
+    cvsBg:'#100e0a', dark:true, laneA:.06,
+    chains:{"挂号链":{s:"#c8922a",g:"#f0b84a",f:"#3d2a08"},"诊疗链":{s:"#5a9e7a",g:"#7ecfa0",f:"#0d2a1a"},"收费链":{s:"#b06030",g:"#e08050",f:"#2a1508"},"药房链":{s:"#7a6aaa",g:"#a090d8",f:"#1a1530"}},
+    dep:'#8a3020' },
+  { id:'jìlán',name:'霁蓝',sub:'官窑',swatch:'#2858a8',
+    css:{'--bg':'#060810','--cvs':'#0a0c18','--border':'#181c30','--text':'#c0cce0','--sub':'#404860','--dim':'#303850','--btn':'#0e1020','--btn-t':'#8090b0','--btn-b':'#202840','--btn-h':'#141828','--act':'#2858a8','--act-t':'#e0ecff','--sep':'#202840'},
+    cvsBg:'#0a0c18', dark:true, laneA:.07,
+    chains:{"挂号链":{s:"#4888d0",g:"#70a8f0",f:"#0c1830"},"诊疗链":{s:"#40a8a0",g:"#60c8c0",f:"#0a2028"},"收费链":{s:"#9878c0",g:"#b898e0",f:"#181028"},"药房链":{s:"#60a870",g:"#80c890",f:"#0c2018"}},
+    dep:'#c04060' },
+];
 
-// ── 自动布局（BFS 拓扑排序 → x；subproject 索引 → y）──
-const adj = {};
-data.arcs.forEach(a => { if (!adj[a.from]) adj[a.from] = []; adj[a.from].push(a.to); });
-const hasIncoming = new Set(data.arcs.map(a => a.to));
-const allIds = allNodes.map(n => n.id);
-const depths = {};
-const bfsQ = allIds.filter(id => !hasIncoming.has(id));
-bfsQ.forEach(id => depths[id] = 0);
-let qi = 0;
-while (qi < bfsQ.length) {
-  const id = bfsQ[qi++];
-  (adj[id] || []).forEach(next => { if (depths[next] === undefined) { depths[next] = depths[id] + 1; bfsQ.push(next); } });
-}
-allIds.forEach(id => { if (depths[id] === undefined) depths[id] = 0; });
-
-// 同 subproject 内按 depth 分列，不同 subproject 按行排
-const COL_W = 150, ROW_H = 130, PAD_X = 80, PAD_Y = 80;
-const spRowY = {};
-spList.forEach((sp, i) => { spRowY[sp] = PAD_Y + i * ROW_H; });
-// 每个 subproject 内各 depth 的节点按顺序排列（避免重叠）
-const spDepthCount = {};
-const positions = {};
-allNodes.forEach(n => {
-  const sp = n.subproject || '_';
-  const d  = depths[n.id] || 0;
-  const key = `${sp}:${d}`;
-  if (!spDepthCount[key]) spDepthCount[key] = 0;
-  const slot = spDepthCount[key]++;
-  positions[n.id] = { x: PAD_X + d * COL_W, y: (spRowY[n.subproject] || PAD_Y) + slot * 50 };
-});
-
-// Canvas 尺寸自适应
-const maxX = Math.max(...Object.values(positions).map(p => p.x)) + 100;
-const maxY = Math.max(...Object.values(positions).map(p => p.y)) + 80;
+let T = THEMES[0];
 const canvas = document.getElementById('c');
-canvas.width = Math.max(maxX, 600); canvas.height = Math.max(maxY, 400);
 const ctx = canvas.getContext('2d');
 
-// ── 构建变迁输入输出表（从 arcs 推导）──
-const transInputs = {}, transOutputs = {};
-data.transitions.forEach(t => { transInputs[t.id] = []; transOutputs[t.id] = []; });
+function applyTheme(theme) {
+  T = theme;
+  Object.entries(theme.css).forEach(([k,v]) => document.documentElement.style.setProperty(k,v));
+  canvas.style.background = theme.cvsBg;
+  document.querySelectorAll('.th-btn').forEach((b,i) => b.classList.toggle('active', i===THEMES.indexOf(theme)));
+}
+
+const tbWrap = document.getElementById('theme-btns');
+THEMES.forEach((t,i) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'th-btn'+(i===0?' active':'');
+  wrap.innerHTML = `<div class="th-swatch" style="background:${t.swatch}"></div><span class="th-name">${t.name}</span>`;
+  wrap.onclick = () => applyTheme(t);
+  tbWrap.appendChild(wrap);
+});
+applyTheme(THEMES[0]);
+```
+
+```js
+// ── 自动布局（BFS 拓扑排序 x；subproject 索引 y）──
+const allNodes = [...data.places, ...data.transitions];
+const spList = [...new Set(allNodes.map(n => n.subproject).filter(Boolean))];
+const adj = {};
+data.arcs.forEach(a => { if (!adj[a.from]) adj[a.from]=[]; adj[a.from].push(a.to); });
+const hasIn = new Set(data.arcs.map(a => a.to));
+const depths = {};
+const bfsQ = allNodes.map(n=>n.id).filter(id => !hasIn.has(id));
+bfsQ.forEach(id => depths[id]=0);
+let qi=0;
+while (qi<bfsQ.length) {
+  const id=bfsQ[qi++];
+  (adj[id]||[]).forEach(nx => { if (depths[nx]===undefined) { depths[nx]=depths[id]+1; bfsQ.push(nx); }});
+}
+allNodes.forEach(n => { if (depths[n.id]===undefined) depths[n.id]=0; });
+
+const COL=150, ROW=130, PX=80, PY=80;
+const spDepCnt={}, positions={};
+allNodes.forEach(n => {
+  const sp=n.subproject||'_', d=depths[n.id]||0, key=`${sp}:${d}`;
+  if (!spDepCnt[key]) spDepCnt[key]=0;
+  const slot=spDepCnt[key]++;
+  positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*50 };
+});
+
+const maxX=Math.max(...Object.values(positions).map(p=>p.x))+100;
+const maxY=Math.max(...Object.values(positions).map(p=>p.y))+80;
+canvas.width=Math.max(maxX,600); canvas.height=Math.max(maxY,400);
+
+// ── 变迁输入输出表（从 arcs 推导）──
+const tIn={}, tOut={};
+data.transitions.forEach(t => { tIn[t.id]=[]; tOut[t.id]=[]; });
 data.arcs.forEach(a => {
-  if (a.from.startsWith('T') && transOutputs[a.from]) transOutputs[a.from].push(a.to);
-  if (a.to.startsWith('T')   && transInputs[a.to])    transInputs[a.to].push(a.from);
+  if (a.from.startsWith('T') && tOut[a.from]) tOut[a.from].push(a.to);
+  if (a.to.startsWith('T')   && tIn[a.to])    tIn[a.to].push(a.from);
 });
 
 // ── 模拟状态 ──
-let tokenMap = {}, animTokens = [], firingTrans = null, autoMode = false, autoTimer = null, stepInterval = 700, tick = 0;
+let tokenMap={}, particles=[], firingId=null, autoMode=false, autoTimer=null, stepMs=800;
 
 function resetSim() {
-  tokenMap = {};
-  data.places.forEach(p => { tokenMap[p.id] = (p.initial_marking && p.initial_marking.length) ? p.initial_marking.length : 0; });
-  animTokens = []; firingTrans = null;
+  tokenMap={};
+  data.places.forEach(p => { tokenMap[p.id]=(p.initial_marking&&p.initial_marking.length)?p.initial_marking.length:0; });
+  particles=[]; firingId=null;
 }
 resetSim();
 
 function getEnabled() {
-  return data.transitions.filter(t => (transInputs[t.id] || []).length > 0 && (transInputs[t.id] || []).every(pid => tokenMap[pid] > 0));
+  return data.transitions.filter(t => (tIn[t.id]||[]).length>0 && (tIn[t.id]||[]).every(pid=>(tokenMap[pid]||0)>0));
 }
 
 function fire(t) {
-  if (firingTrans) return;
-  (transInputs[t.id] || []).forEach(pid => tokenMap[pid]--);
-  firingTrans = t.id;
-  const tp = positions[t.id];
-  (transInputs[t.id] || []).forEach(fromId => {
-    (transOutputs[t.id] || []).forEach(toId => {
-      const fp = positions[fromId], dp = positions[toId];
-      animTokens.push({ x: fp.x, y: fp.y, tx: tp.x, ty: tp.y, tx2: dp.x, ty2: dp.y, phase: 0, color: chainGlow[t.chain] || '#fbbf24', toId, done: false });
+  if (firingId) return;
+  (tIn[t.id]||[]).forEach(pid => tokenMap[pid]--);
+  firingId=t.id;
+  (tIn[t.id]||[]).forEach(fromId => {
+    (tOut[t.id]||[]).forEach(toId => {
+      const tp=positions[t.id];
+      particles.push({ path:[positions[fromId],tp,positions[toId]], prog:0, chain:t.chain, toId, done:false });
     });
   });
 }
 
-function stepOnce() {
-  if (firingTrans) return;
-  const en = getEnabled();
-  if (!en.length) return;
-  fire(en[0]);
-}
+function stepOnce() { if (!firingId) { const en=getEnabled(); if(en.length) fire(en[0]); } }
 
 function toggleAuto() {
-  autoMode = !autoMode;
-  const btn = document.getElementById('btn-auto');
-  if (autoMode) { btn.textContent = '⏸ 暂停'; btn.classList.add('active'); scheduleNext(); }
-  else { btn.textContent = '▶ 自动运行'; btn.classList.remove('active'); clearTimeout(autoTimer); }
+  autoMode=!autoMode;
+  const btn=document.getElementById('btn-auto');
+  if (autoMode) { btn.textContent='⏸ 暂停'; btn.classList.add('active'); scheduleNext(); }
+  else { btn.textContent='▶ 自动运行'; btn.classList.remove('active'); clearTimeout(autoTimer); }
 }
 
 function scheduleNext() {
   if (!autoMode) return;
-  autoTimer = setTimeout(() => {
-    if (!firingTrans) {
-      const en = getEnabled();
-      if (!en.length) {
-        if (autoMode) { setTimeout(() => { resetSim(); scheduleNext(); }, 1600); return; }
-      } else { fire(en[0]); }
+  autoTimer=setTimeout(() => {
+    if (!firingId) {
+      const en=getEnabled();
+      if (!en.length) { setTimeout(()=>{ resetSim(); if(autoMode) scheduleNext(); },1400); return; }
+      fire(en[0]);
     }
     scheduleNext();
-  }, stepInterval);
+  }, 60);
 }
 
 function setSpeed(ms) {
-  stepInterval = ms;
-  ['sp-slow','sp-mid','sp-fast'].forEach(id => document.getElementById(id).classList.remove('active'));
-  document.getElementById(ms===1200?'sp-slow':ms===700?'sp-mid':'sp-fast').classList.add('active');
+  stepMs=ms;
+  ['sp-slow','sp-mid','sp-fast'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  document.getElementById(ms===1400?'sp-slow':ms===800?'sp-mid':'sp-fast').classList.add('active');
 }
 ```
 
 ```js
 // ── 绘制工具 ──
-const PR = 26, TW = 52, TH = 32;
+const PR=26, TW=52, TH=30;
 
-function roundRect(x, y, w, h, r) {
+function roundRect(x,y,w,h,r) {
   ctx.beginPath();
-  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.arcTo(x+w,y,x+w,y+r,r);
-  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
-  ctx.lineTo(x+r, y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
-  ctx.lineTo(x, y+r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
 }
 
-function edgePts(fromId, toId) {
-  const f = positions[fromId], t = positions[toId];
-  const dx = t.x-f.x, dy = t.y-f.y, len = Math.sqrt(dx*dx+dy*dy)||1;
-  const ux = dx/len, uy = dy/len;
-  let x1=f.x, y1=f.y, x2=t.x, y2=t.y;
-  if (fromId.startsWith('P')) { x1=f.x+ux*PR; y1=f.y+uy*PR; }
-  else { const s=Math.min(Math.abs((TW/2)/(ux||1e-9)), Math.abs((TH/2)/(uy||1e-9))); x1=f.x+ux*s; y1=f.y+uy*s; }
-  if (toId.startsWith('P'))   { x2=t.x-ux*PR; y2=t.y-uy*PR; }
-  else { const s=Math.min(Math.abs((TW/2)/(ux||1e-9)), Math.abs((TH/2)/(uy||1e-9))); x2=t.x-ux*s; y2=t.y-uy*s; }
-  return {x1,y1,x2,y2};
+function edgePt(id, toward, isStart) {
+  const f=positions[id], t=positions[toward];
+  const dx=t.x-f.x, dy=t.y-f.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+  const ux=dx/len, uy=dy/len, sign=isStart?1:-1;
+  if (id.startsWith('P')) return {x:f.x+ux*sign*PR, y:f.y+uy*sign*PR};
+  const sx=Math.abs(ux)<1e-6?1e9:(TW/2)/Math.abs(ux);
+  const sy=Math.abs(uy)<1e-6?1e9:(TH/2)/Math.abs(uy);
+  const s=Math.min(sx,sy);
+  return {x:f.x+ux*sign*s, y:f.y+uy*sign*s};
 }
 
-function drawArrow(x1,y1,x2,y2,color,dashed,lw) {
-  ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=lw||1.5;
-  if (dashed) ctx.setLineDash([6,4]);
+function arrow(x1,y1,x2,y2,color,dashed,lw) {
+  ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=lw||1.3;
+  if (dashed) ctx.setLineDash([5,4]);
   ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.setLineDash([]);
   const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1,ux=dx/len,uy=dy/len;
-  const ax=x2-ux*9,ay=y2-uy*9;
-  ctx.fillStyle=color; ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(ax-uy*5,ay+ux*5); ctx.lineTo(ax+uy*5,ay-ux*5); ctx.closePath(); ctx.fill();
-  ctx.restore();
+  const ax=x2-ux*8,ay=y2-uy*8;
+  ctx.fillStyle=color; ctx.beginPath();
+  ctx.moveTo(x2,y2); ctx.lineTo(ax-uy*4,ay+ux*4); ctx.lineTo(ax+uy*4,ay-ux*4);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function pathLerp(path, prog) {
+  let segs=[], total=0;
+  for (let i=1;i<path.length;i++) {
+    const d=Math.sqrt((path[i].x-path[i-1].x)**2+(path[i].y-path[i-1].y)**2);
+    segs.push(d); total+=d;
+  }
+  if (!total) return path[0];
+  let dist=prog*total;
+  for (let i=0;i<segs.length;i++) {
+    if (dist<=segs[i]) { const f=segs[i]>0?dist/segs[i]:0; return {x:path[i].x+(path[i+1].x-path[i].x)*f,y:path[i].y+(path[i+1].y-path[i].y)*f}; }
+    dist-=segs[i];
+  }
+  return path[path.length-1];
 }
 
 // ── 主绘制循环 ──
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  tick++;
+let lastT=0, frame=0;
+
+function draw(now) {
+  const dt=Math.min((now-lastT)/1000,.05); lastT=now; frame++;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const ch=T.chains;
 
   // 1. 泳道背景
-  spList.forEach((sp, i) => {
-    const color = PALETTE[i % PALETTE.length];
-    const spNodes = allNodes.filter(n => n.subproject === sp);
-    if (!spNodes.length) return;
-    const xs = spNodes.map(n => positions[n.id].x), ys = spNodes.map(n => positions[n.id].y);
+  spList.forEach((sp,i) => {
+    const spNodes=allNodes.filter(n=>n.subproject===sp); if(!spNodes.length) return;
+    const xs=spNodes.map(n=>positions[n.id].x), ys=spNodes.map(n=>positions[n.id].y);
     const lx=Math.min(...xs)-40, ly=Math.min(...ys)-30, lw=Math.max(...xs)-lx+80, lh=Math.max(...ys)-ly+60;
-    ctx.save(); ctx.globalAlpha=0.07; ctx.fillStyle=color; roundRect(lx,ly,lw,lh,10); ctx.fill();
-    ctx.globalAlpha=1; ctx.strokeStyle=color; ctx.lineWidth=1.2; ctx.setLineDash([5,4]); roundRect(lx,ly,lw,lh,10); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle=color; ctx.font='bold 11px PingFang SC,sans-serif'; ctx.fillText(sp, lx+10, ly+18);
-    ctx.restore();
+    const c=Object.values(ch)[i%Object.keys(ch).length];
+    ctx.save(); ctx.globalAlpha=T.laneA; ctx.fillStyle=c.s; roundRect(lx,ly,lw,lh,10); ctx.fill();
+    ctx.globalAlpha=1; ctx.strokeStyle=c.s+(T.dark?'55':'44'); ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    roundRect(lx,ly,lw,lh,10); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.s+(T.dark?'99':'bb'); ctx.font='bold 10px PingFang SC,sans-serif';
+    ctx.fillText(sp,lx+10,ly+16); ctx.restore();
   });
 
   // 2. 普通弧（节点下层）
   data.arcs.forEach(a => {
-    const {x1,y1,x2,y2} = edgePts(a.from, a.to);
-    const node = data.places.find(p=>p.id===a.from) || data.transitions.find(t=>t.id===a.from);
-    drawArrow(x1,y1,x2,y2,(chainColor[node?.chain]||'#475569')+'99',false,1.5);
+    const node=data.places.find(p=>p.id===a.from)||data.transitions.find(t=>t.id===a.from);
+    const c=ch[node?.chain]||Object.values(ch)[0];
+    const s=edgePt(a.from,a.to,true), e=edgePt(a.to,a.from,false);
+    arrow(s.x,s.y,e.x,e.y,c.s+(T.dark?'77':'88'),false,1.2);
   });
 
   // 3. 依赖关系虚线（dependency_rules）
-  (data.dependency_rules || []).forEach(dep => {
-    const fromP = data.places.find(p => dep.predecessor.includes(p.name.split('_')[0]) || dep.predecessor.includes(p.id));
-    const toT   = data.transitions.find(t => dep.successor.includes(t.name) || dep.successor.includes(t.id));
-    if (!fromP || !toT || !positions[fromP.id] || !positions[toT.id]) return;
-    const {x1,y1,x2,y2} = edgePts(fromP.id, toT.id);
-    drawArrow(x1,y1,x2,y2,'#ef4444cc',true,1.5);
-    ctx.save(); ctx.fillStyle='#ef4444'; ctx.font='bold 9px monospace';
-    ctx.fillText(dep.id, (x1+x2)/2+4, (y1+y2)/2-4); ctx.restore();
+  (data.dependency_rules||[]).forEach(dep => {
+    const fromP=data.places.find(p=>dep.predecessor.includes(p.name.replace('_',''))||dep.predecessor.includes(p.id));
+    const toTr=data.transitions.find(t=>dep.successor.includes(t.name)||dep.successor.includes(t.id));
+    if (!fromP||!toTr||!positions[fromP.id]||!positions[toTr.id]) return;
+    const s=edgePt(fromP.id,toTr.id,true), e=edgePt(toTr.id,fromP.id,false);
+    arrow(s.x,s.y,e.x,e.y,T.dep+'99',true,1.2);
+    ctx.save(); ctx.fillStyle=T.dep+'cc'; ctx.font='bold 8px monospace';
+    ctx.fillText(dep.id,(s.x+e.x)/2+4,(s.y+e.y)/2-4); ctx.restore();
   });
 
-  // 4. 变迁（矩形）
+  // 4. 变迁形状
   data.transitions.forEach(t => {
-    const p = positions[t.id]; if (!p) return;
-    const color = chainColor[t.chain]||'#475569', glow = chainGlow[t.chain]||'#fbbf24';
-    const isFiring = firingTrans===t.id, isEnabled = !firingTrans && getEnabled().some(e=>e.id===t.id);
+    const p=positions[t.id]; if(!p) return;
+    const c=ch[t.chain]||Object.values(ch)[0];
+    const isFiring=firingId===t.id, isEnabled=!firingId&&getEnabled().some(e=>e.id===t.id);
     ctx.save();
-    if (isFiring) { ctx.shadowColor=glow; ctx.shadowBlur=18+Math.sin(tick*0.2)*6; }
-    ctx.fillStyle = isFiring ? glow : (isEnabled ? color : color+'88');
-    roundRect(p.x-TW/2, p.y-TH/2, TW, TH, 5); ctx.fill();
-    if (isEnabled && !isFiring) { ctx.strokeStyle=glow; ctx.lineWidth=1.5; ctx.shadowColor=glow; ctx.shadowBlur=8; roundRect(p.x-TW/2,p.y-TH/2,TW,TH,5); ctx.stroke(); }
-    ctx.restore();
-    ctx.save(); ctx.fillStyle='#f1f5f9'; ctx.font='10px PingFang SC,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(t.name.length>6?t.name.slice(0,6)+'…':t.name, p.x, p.y); ctx.restore();
+    if (isFiring) { ctx.shadowColor=c.g; ctx.shadowBlur=22+Math.sin(frame*.15)*6; }
+    else if (isEnabled) { ctx.shadowColor=c.g; ctx.shadowBlur=10; }
+    ctx.fillStyle=isFiring?c.g+'ee':(isEnabled?c.s+'cc':(T.dark?c.f:c.f+'cc'));
+    roundRect(p.x-TW/2,p.y-TH/2,TW,TH,4); ctx.fill();
+    ctx.strokeStyle=isFiring?c.g:(isEnabled?c.g+'cc':c.s+(T.dark?'44':'55'));
+    ctx.lineWidth=isEnabled||isFiring?1.5:1;
+    roundRect(p.x-TW/2,p.y-TH/2,TW,TH,4); ctx.stroke(); ctx.restore();
   });
 
-  // 5. 库所（圆形）
+  // 5. 库所形状
   data.places.forEach(pl => {
-    const p = positions[pl.id]; if (!p) return;
-    const color = chainColor[pl.chain]||'#475569', glow = chainGlow[pl.chain]||'#94a3b8';
-    const hasToken = tokenMap[pl.id] > 0;
-    ctx.save();
-    ctx.beginPath(); ctx.arc(p.x,p.y,PR,0,Math.PI*2);
-    ctx.fillStyle = hasToken ? color+'22' : '#1e293b'; ctx.fill();
-    ctx.strokeStyle = hasToken ? glow : color+'66'; ctx.lineWidth = hasToken ? 2.5 : 1.5;
-    if (hasToken) { ctx.shadowColor=glow; ctx.shadowBlur=10; }
+    const p=positions[pl.id]; if(!p) return;
+    const c=ch[pl.chain]||Object.values(ch)[0];
+    const has=(tokenMap[pl.id]||0)>0;
+    ctx.save(); ctx.beginPath(); ctx.arc(p.x,p.y,PR,0,Math.PI*2);
+    ctx.fillStyle=has?c.f+(T.dark?'dd':'cc'):(T.dark?'#0d0c0a':'#f8f5f0'); ctx.fill();
+    ctx.strokeStyle=has?c.s:c.s+(T.dark?'44':'55'); ctx.lineWidth=has?2:1.2;
+    if (has) { ctx.shadowColor=c.g; ctx.shadowBlur=12; }
     ctx.stroke(); ctx.restore();
-    if (hasToken) {
-      const cnt = tokenMap[pl.id];
-      for (let i=0; i<Math.min(cnt,5); i++) {
-        const angle = cnt===1 ? -Math.PI/2 : (i/cnt)*Math.PI*2-Math.PI/2;
-        const r = cnt===1 ? 0 : 10;
-        ctx.save(); ctx.beginPath(); ctx.arc(p.x+Math.cos(angle)*r, p.y+Math.sin(angle)*r, 5, 0, Math.PI*2);
-        ctx.fillStyle=glow; ctx.shadowColor=glow; ctx.shadowBlur=12; ctx.fill(); ctx.restore();
+    if (has) {
+      const cnt=tokenMap[pl.id];
+      for (let i=0;i<Math.min(cnt,5);i++) {
+        const angle=cnt===1?-Math.PI/2:(i/cnt)*Math.PI*2-Math.PI/2, r=cnt===1?0:9;
+        ctx.save(); ctx.beginPath(); ctx.arc(p.x+Math.cos(angle)*r,p.y+Math.sin(angle)*r,4.5,0,Math.PI*2);
+        ctx.fillStyle=c.g; ctx.shadowColor=c.g; ctx.shadowBlur=14; ctx.fill(); ctx.restore();
       }
     }
-    // 文字最后画（最上层，永不被遮挡）
-    ctx.save(); ctx.fillStyle=hasToken?'#f1f5f9':'#94a3b8'; ctx.font='10px PingFang SC,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    const lines = pl.name.split('_'); const lh = 13;
-    lines.forEach((line, i) => ctx.fillText(line, p.x, p.y - (lines.length-1)*lh/2 + i*lh));
+  });
+
+  // 6. 所有文字最后画（永不被遮挡）
+  data.transitions.forEach(t => {
+    const p=positions[t.id]; if(!p) return;
+    const c=ch[t.chain]||Object.values(ch)[0];
+    const isFiring=firingId===t.id, isEnabled=!firingId&&getEnabled().some(e=>e.id===t.id);
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='10px PingFang SC,sans-serif';
+    ctx.fillStyle=isFiring?(T.dark?'#1a1000':'#fff8e8'):(isEnabled?(T.dark?'#e8d090':c.s):(T.dark?c.s+'cc':'#6a5a48'));
+    ctx.fillText(t.name.length>6?t.name.slice(0,6)+'…':t.name,p.x,p.y); ctx.restore();
+  });
+
+  data.places.forEach(pl => {
+    const p=positions[pl.id]; if(!p) return;
+    const c=ch[pl.chain]||Object.values(ch)[0];
+    const has=(tokenMap[pl.id]||0)>0;
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='10px PingFang SC,sans-serif';
+    ctx.fillStyle=has?(T.dark?'#d4b870':c.s):(T.dark?c.s+'88':'#9a8e80');
+    const lines=pl.name.split('_'), lh=13;
+    lines.forEach((ln,i)=>ctx.fillText(ln,p.x,p.y-(lines.length-1)*lh/2+i*lh));
     ctx.restore();
   });
 
-  // 6. 飞行 token 粒子
-  animTokens = animTokens.filter(tk => !tk.done);
-  animTokens.forEach(tk => {
-    const spd = 0.1;
-    if (tk.phase===0) {
-      tk.x+=(tk.tx-tk.x)*spd*2; tk.y+=(tk.ty-tk.y)*spd*2;
-      if (Math.abs(tk.x-tk.tx)<3 && Math.abs(tk.y-tk.ty)<3) tk.phase=1;
-    } else {
-      tk.x+=(tk.tx2-tk.x)*spd*2; tk.y+=(tk.ty2-tk.y)*spd*2;
-      if (Math.abs(tk.x-tk.tx2)<3 && Math.abs(tk.y-tk.ty2)<3) {
-        tokenMap[tk.toId]++; tk.done=true;
-        if (animTokens.filter(t=>!t.done).length === 0) firingTrans=null;
-      }
-    }
-    ctx.save(); ctx.beginPath(); ctx.arc(tk.x,tk.y,6,0,Math.PI*2);
-    ctx.fillStyle=tk.color; ctx.shadowColor=tk.color; ctx.shadowBlur=16; ctx.fill();
-    ctx.globalAlpha=0.3; ctx.beginPath(); ctx.arc(tk.x-(tk.tx2-tk.x)*0.15, tk.y-(tk.ty2-tk.y)*0.15, 4, 0, Math.PI*2); ctx.fill();
-    ctx.restore();
+  // 7. 粒子（线性进度，不会卡死）
+  const dur=stepMs*0.001*0.65;
+  particles.forEach(pk => {
+    if (pk.done) return;
+    pk.prog+=dt/dur;
+    if (pk.prog>=1) { pk.prog=1; pk.done=true; tokenMap[pk.toId]=(tokenMap[pk.toId]||0)+1; }
+    const pt=pathLerp(pk.path,pk.prog), pt0=pathLerp(pk.path,Math.max(0,pk.prog-.1));
+    const c=ch[pk.chain]||Object.values(ch)[0];
+    ctx.save();
+    ctx.strokeStyle=c.g+'55'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(pt0.x,pt0.y); ctx.lineTo(pt.x,pt.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(pt.x,pt.y,6,0,Math.PI*2);
+    ctx.fillStyle=c.g; ctx.shadowColor=c.g; ctx.shadowBlur=20; ctx.fill(); ctx.restore();
   });
+
+  // 全部落地才解锁（必须 every，不能用 length <= 1）
+  if (particles.length>0 && particles.every(pk=>pk.done)) { firingId=null; particles=[]; }
 
   requestAnimationFrame(draw);
 }
-draw();
+requestAnimationFrame(draw);
 </script>
 </body>
 </html>
@@ -316,8 +403,8 @@ draw();
 
 ## 使用说明
 
-1. 将 `__CPN_DATA__` 替换为 json-schema.md 中定义格式的完整 JSON 对象
-2. `places` 数组中每个节点需包含 `initial_marking` 字段；资源库所（如"缴费待完成"）若有初始 token，务必在 `initial_marking` 中列出
-3. 直接在浏览器打开 HTML 文件即可查看动态 Petri 网
-4. 圆形=库所，矩形=变迁，实线=弧，红色虚线=依赖关系；可触发变迁会发光提示
-5. 支持自动运行（循环）、单步执行、速度调节
+1. 将 `__CPN_DATA__` 替换为 json-schema.md 格式的完整 JSON 对象
+2. `places` 中有初始 token 的库所必须在 `initial_marking` 中列出（如 `["1\`收费链"]`），否则多输入变迁永远无法触发
+3. 浏览器打开即可看到动态 Petri 网，支持自动运行、单步、重置、速度调节
+4. 右上角4套宋式主题可切换：天青（汝窑）/ 水墨（宋画）/ 松烟（建盏）/ 霁蓝（官窑）
+5. 圆形=库所，矩形=变迁，实线=弧，红色虚线=依赖关系；可触发变迁发光提示
