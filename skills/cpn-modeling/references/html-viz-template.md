@@ -4,7 +4,7 @@ Claude 生成 HTML 可视化时，使用以下模板结构。将 `__CPN_DATA__` 
 
 ## 核心规则
 
-1. **渲染引擎**：Canvas（不用 SVG），绘制顺序：泳道 → 弧 → 变迁形状 → 库所形状 → **所有文字最后统一画**，文字永不被遮挡
+1. **渲染引擎**：Canvas（不用 SVG），绘制顺序：泳道 → 弧 → 变迁形状 → 库所形状 → 所有文字 → **依赖虚线最后画**（带背景色块），永不被节点遮挡
 2. **动画**：粒子用线性进度值 `prog: 0→1`，每帧 `prog += dt / duration`，`prog >= 1` 时强制落地。**禁止**用指数逼近（`x += (target-x) * k`）——永远无法精确到达，必然卡死
 3. **解锁条件**：`particles.every(pk => pk.done)` 全部落地才清除 `firingId`，**不能**用 `length <= 1`
 4. **资源库所**：有初始 token 的库所（如"缴费待完成"）必须在 `places` 中设 `tokens: N`，否则多输入变迁永远无法触发
@@ -310,18 +310,7 @@ function draw(now) {
     arrow(s.x,s.y,e.x,e.y,c.s+(T.dark?'77':'88'),false,1.2);
   });
 
-  // 3. 依赖关系虚线（dependency_rules）
-  (data.dependency_rules||[]).forEach(dep => {
-    const fromP=data.places.find(p=>dep.predecessor.includes(p.name.replace('_',''))||dep.predecessor.includes(p.id));
-    const toTr=data.transitions.find(t=>dep.successor.includes(t.name)||dep.successor.includes(t.id));
-    if (!fromP||!toTr||!positions[fromP.id]||!positions[toTr.id]) return;
-    const s=edgePt(fromP.id,toTr.id,true), e=edgePt(toTr.id,fromP.id,false);
-    arrow(s.x,s.y,e.x,e.y,T.dep+'99',true,1.2);
-    ctx.save(); ctx.fillStyle=T.dep+'cc'; ctx.font='bold 8px monospace';
-    ctx.fillText(dep.id,(s.x+e.x)/2+4,(s.y+e.y)/2-4); ctx.restore();
-  });
-
-  // 4. 变迁形状
+  // 3. 变迁形状
   data.transitions.forEach(t => {
     const p=positions[t.id]; if(!p) return;
     const c=ch[t.chain]||Object.values(ch)[0];
@@ -375,6 +364,22 @@ function draw(now) {
     const lines=pl.name.split('_'), lh=13;
     lines.forEach((ln,i)=>ctx.fillText(ln,p.x,p.y-(lines.length-1)*lh/2+i*lh));
     ctx.restore();
+  });
+
+  // 6. 依赖关系虚线（最后画，永远在最上层）
+  (data.dependency_rules||[]).forEach(dep => {
+    const fromP=data.places.find(p=>dep.predecessor.includes(p.name.replace('_',''))||dep.predecessor.includes(p.id));
+    const toTr=data.transitions.find(t=>dep.successor.includes(t.name)||dep.successor.includes(t.id));
+    if (!fromP||!toTr||!positions[fromP.id]||!positions[toTr.id]) return;
+    const s=edgePt(fromP.id,toTr.id,true), e=edgePt(toTr.id,fromP.id,false);
+    arrow(s.x,s.y,e.x,e.y,T.dep+'cc',true,1.5);
+    const lx=(s.x+e.x)/2, ly=(s.y+e.y)/2;
+    ctx.save(); ctx.font='bold 9px monospace';
+    const tw=ctx.measureText(dep.id).width;
+    ctx.fillStyle=T.dark?'rgba(0,0,0,.72)':'rgba(255,255,255,.82)';
+    ctx.fillRect(lx-tw/2-3,ly-16,tw+6,14);
+    ctx.fillStyle=T.dep; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(dep.id,lx,ly-9); ctx.restore();
   });
 
   // 7. 粒子（线性进度，不会卡死）
