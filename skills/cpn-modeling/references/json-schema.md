@@ -47,20 +47,27 @@
       "annotation": "1`新建"
     }
   ],
-  "fs_rules": [
+  "dependency_rules": [
     {
-      "id": "FS1",
-      "type": "cross_subproject",
+      "id": "DEP1",
+      "mechanism": "fusion_place",
       "predecessor": "新建.TaskDA",
       "successor": "水电.MaterialsSI",
-      "description": "墙体验收后才能开槽布管"
+      "description": "墙体验收后才能开槽布管（跨页面融合库所）"
     },
     {
-      "id": "FS2",
-      "type": "cross_chain",
+      "id": "DEP2",
+      "mechanism": "guard_condition",
       "predecessor": "SAL.收款",
       "successor": "PKG.预算分配",
-      "description": "资金到位后才能分配预算"
+      "description": "资金到位后才能分配预算（变迁守卫条件）"
+    },
+    {
+      "id": "DEP3",
+      "mechanism": "arc_sequence",
+      "predecessor": "CPK.施工",
+      "successor": "CPK.验收",
+      "description": "施工完成后才能验收（输入弧 token 流动）"
     }
   ]
 }
@@ -75,4 +82,4 @@
 | places | array | 库所列表 |
 | transitions | array | 变迁列表 |
 | arcs | array | 弧列表，type 为 input 或 output |
-| fs_rules | array | FS 依赖规则，type 为 cross_subproject 或 cross_chain |
+| dependency_rules | array | 依赖规则，mechanism 为 fusion_place / guard_condition / arc_sequence |

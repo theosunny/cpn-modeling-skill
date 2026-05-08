@@ -29,13 +29,13 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 - 交易链类型（ChainType）：SAL、PKG、MPK、CPK（或从描述中识别）
 - 单据类型（DocType）：从描述中提取单据名称
 
-### 4. FS 规则
-识别含**依赖语义**的句子：
+### 4. 依赖关系（Dependency）
+识别含**依赖语义**的句子，映射为 CPN 原生机制：
 - 触发词：必须等待、才能、先于、依赖、完成后、验收后
-- 两类规则：
-  - `cross_subproject`：不同子项目间的单据依赖
-  - `cross_chain`：同一子项目内不同交易链间的依赖
-  - `intra_chain`：同一交易链内的工序顺序依赖（如步骤 A 必须先于步骤 B）
+- 三类机制：
+  - `fusion_place`：跨页面依赖——不同子项目间的状态共享，用融合库所（Fusion Place）表达
+  - `guard_condition`：跨链依赖——同一子项目内不同交易链间的顺序约束，用变迁守卫条件（Guard）表达
+  - `arc_sequence`：链内顺序——同一交易链内的工序先后，用输入弧（Input Arc）的 token 流动表达
 
 ---
 
@@ -64,6 +64,11 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 
 输出完整 XML，格式严格参考 `references/cpn-xml-template.md` 中的模板结构。
 
+依赖关系的 CPN 表达方式：
+- `fusion_place` → 在目标 page 创建同名融合库所，与源 page 的库所共享 token
+- `guard_condition` → 在变迁的 `<condition>` 中写入前置库所的 token 检查
+- `arc_sequence` → 通过输入弧自然表达，无需额外处理
+
 ### 第三部分：HTML 可视化
 
 生成完整 HTML 文件内容，格式参考 `references/html-viz-template.md`。
@@ -78,10 +83,10 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 ## 输出质量检查
 
 生成三种输出后，自检以下几点：
-1. JSON 中的 `fs_rules` 是否覆盖了描述中所有"必须等待/才能"的依赖关系
+1. JSON 中的 `dependency_rules` 是否覆盖了描述中所有"必须等待/才能"的依赖关系
 2. CPN XML 中每个 `<page>` 是否与 JSON 中的子项目一一对应
 3. HTML 中的 `__CPN_DATA__` 是否已替换为实际 JSON
-4. CPN XML 中每条 `cross_subproject` FS 规则是否有对应的融合库所，每条 `cross_chain` 规则是否有对应的 `<condition>` 守卫条件
+4. `fusion_place` 类型的依赖是否在目标 page 创建了融合库所，`guard_condition` 类型是否在变迁的 `<condition>` 中写入了守卫条件
 
 ---
 
