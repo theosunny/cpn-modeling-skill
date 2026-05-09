@@ -136,15 +136,11 @@ applyTheme(THEMES[0]);
 ```
 
 ```js
-// ── 自动布局（BFS 拓扑排序 x；subproject 索引 y）──
+// ── 自动布局（最长路径算法，保证所有正向弧从左往右）──
 const allNodes = [...data.places, ...data.transitions];
 const spList = [...new Set(allNodes.map(n => n.subproject).filter(Boolean))];
-const adj = {};
-data.arcs.forEach(a => { if (!adj[a.from]) adj[a.from]=[]; adj[a.from].push(a.to); });
-const hasIn = new Set(data.arcs.map(a => a.to));
-const depths = {};
-// 真正的资源库所：有初始 token，且同一变迁既消耗又归还（循环弧）
-// 入口库所（只被消耗，不归还）不算资源库所，不强制 depth=0
+
+// 资源库所：有初始 token，且同一变迁既消耗又归还（循环弧）
 const resourcePlaceIds = new Set(
   data.places.filter(p => {
     if (!p.initial_marking || !p.initial_marking.length) return false;
@@ -153,19 +149,45 @@ const resourcePlaceIds = new Set(
     return consumers.some(t => producers.includes(t));
   }).map(p => p.id)
 );
-const bfsQ = allNodes.map(n=>n.id).filter(id => !hasIn.has(id) || resourcePlaceIds.has(id));
-bfsQ.forEach(id => depths[id]=0);
-let qi=0;
-while (qi<bfsQ.length) {
-  const id=bfsQ[qi++];
-  (adj[id]||[]).forEach(nx => { if (depths[nx]===undefined) { depths[nx]=depths[id]+1; bfsQ.push(nx); }});
-}
-allNodes.forEach(n => { if (depths[n.id]===undefined) depths[n.id]=0; });
 
-const COL=200, ROW=170, PX=80, PY=80;
+// 去掉资源归还弧（T→资源库所），得到无环 DAG
+const returnArcSet = new Set(
+  data.arcs.filter(a => a.from.startsWith('T') && resourcePlaceIds.has(a.to)).map(a => a.id)
+);
+const dagAdj = {};
+data.arcs.filter(a => !returnArcSet.has(a.id)).forEach(a => {
+  if (!dagAdj[a.from]) dagAdj[a.from] = [];
+  dagAdj[a.from].push(a.to);
+});
+
+// 最长路径（关键路径）：保证所有正向弧从左往右
+const inDeg = {};
+allNodes.forEach(n => inDeg[n.id] = 0);
+Object.values(dagAdj).forEach(tos => tos.forEach(to => inDeg[to] = (inDeg[to]||0) + 1));
+const dist = {};
+const topoQ = allNodes.map(n => n.id).filter(id => !inDeg[id]);
+topoQ.forEach(id => dist[id] = 0);
+let tqi = 0;
+while (tqi < topoQ.length) {
+  const id = topoQ[tqi++];
+  (dagAdj[id]||[]).forEach(nx => {
+    dist[nx] = Math.max(dist[nx]||0, (dist[id]||0) + 1);
+    if (--inDeg[nx] === 0) topoQ.push(nx);
+  });
+}
+allNodes.forEach(n => { if (dist[n.id] === undefined) dist[n.id] = 0; });
+
+// 资源库所放在其消费变迁的前一列（紧靠左侧）
+resourcePlaceIds.forEach(pid => {
+  const consumers = data.arcs.filter(a => a.from === pid && a.to.startsWith('T')).map(a => a.to);
+  const minD = Math.min(...consumers.map(tid => dist[tid]||0));
+  dist[pid] = Math.max(0, minD - 1);
+});
+
+const COL=120, ROW=170, PX=80, PY=80;
 const spDepCnt={}, positions={};
 allNodes.forEach(n => {
-  const sp=n.subproject||'_', d=depths[n.id]||0, key=`${sp}:${d}`;
+  const sp=n.subproject||'_', d=dist[n.id]||0, key=`${sp}:${d}`;
   if (!spDepCnt[key]) spDepCnt[key]=0;
   const slot=spDepCnt[key]++;
   positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*60 };
@@ -278,6 +300,21 @@ function arrow(x1,y1,x2,y2,color,dashed,lw) {
   ctx.closePath(); ctx.fill(); ctx.restore();
 }
 
+// 曲线弧（用于资源归还弧，向上弯曲避免与正向弧重叠）
+function arrowCurve(x1,y1,x2,y2,color,lw) {
+  const mx=(x1+x2)/2, my=(y1+y2)/2;
+  const dx=x2-x1, dy=y2-y1, len=Math.sqrt(dx*dx+dy*dy)||1;
+  const cx=mx-dy/len*50, cy=my+dx/len*50;
+  ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=lw||1.3;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx,cy,x2,y2); ctx.stroke();
+  const ex=x2-(x2-cx)*0.15, ey=y2-(y2-cy)*0.15;
+  const ux2=(x2-ex)/Math.sqrt((x2-ex)**2+(y2-ey)**2)||1, uy2=(y2-ey)/Math.sqrt((x2-ex)**2+(y2-ey)**2)||0;
+  const ax=x2-ux2*8, ay=y2-uy2*8;
+  ctx.fillStyle=color; ctx.beginPath();
+  ctx.moveTo(x2,y2); ctx.lineTo(ax-uy2*4,ay+ux2*4); ctx.lineTo(ax+uy2*4,ay-ux2*4);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
 function pathLerp(path, prog) {
   let segs=[], total=0;
   for (let i=1;i<path.length;i++) {
@@ -319,7 +356,12 @@ function draw(now) {
     const node=data.places.find(p=>p.id===a.from)||data.transitions.find(t=>t.id===a.from);
     const c=ch[node?.chain]||Object.values(ch)[0];
     const s=edgePt(a.from,a.to,true), e=edgePt(a.to,a.from,false);
-    arrow(s.x,s.y,e.x,e.y,c.s+(T.dark?'77':'88'),false,1.2);
+    const isReturn = returnArcSet.has(a.id);
+    if (isReturn) {
+      arrowCurve(s.x,s.y,e.x,e.y,c.s+(T.dark?'55':'66'),1.1);
+    } else {
+      arrow(s.x,s.y,e.x,e.y,c.s+(T.dark?'77':'88'),false,1.2);
+    }
     if (a.annotation) {
       const mx=(s.x+e.x)/2, my=(s.y+e.y)/2;
       const dx=e.x-s.x, dy=e.y-s.y, len=Math.sqrt(dx*dx+dy*dy)||1;
