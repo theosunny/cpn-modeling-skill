@@ -185,13 +185,37 @@ resourcePlaceIds.forEach(pid => {
   dist[pid] = Math.max(0, minD - 1);
 });
 
-const COL=160, ROW=180, PX=80, PY=80;
+const COL=160, SLOT_H=70, LANE_GAP=60, PX=80, PY=80;
+
+// 第一遍：统计每条泳道在同一深度最多几个节点（决定泳道高度）
+const spMaxSlot={}, spDepCnt2={};
+allNodes.forEach(n => {
+  const sp=n.subproject||'_', d=dist[n.id]||0, key=`${sp}:${d}`;
+  spDepCnt2[key]=(spDepCnt2[key]||0)+1;
+});
+spList.forEach(sp => {
+  let maxSlots=0;
+  Object.keys(spDepCnt2).forEach(k => {
+    if (k.startsWith(sp+':')) maxSlots=Math.max(maxSlots, spDepCnt2[k]);
+  });
+  spMaxSlot[sp]=maxSlots||1;
+});
+
+// 每条泳道高度 = maxSlots * SLOT_H，泳道间固定间隔 LANE_GAP
+const spYStart={};
+let curY=PY;
+spList.forEach(sp => {
+  spYStart[sp]=curY;
+  curY += spMaxSlot[sp]*SLOT_H + LANE_GAP;
+});
+
+// 第二遍：分配节点位置
 const spDepCnt={}, positions={};
 allNodes.forEach(n => {
   const sp=n.subproject||'_', d=dist[n.id]||0, key=`${sp}:${d}`;
   if (!spDepCnt[key]) spDepCnt[key]=0;
   const slot=spDepCnt[key]++;
-  positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*60 };
+  positions[n.id]={ x:PX+d*COL, y:spYStart[sp]+slot*SLOT_H };
 });
 
 // 画布按内容自然大小，外层容器负责滚动
