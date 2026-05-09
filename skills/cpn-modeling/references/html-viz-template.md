@@ -60,13 +60,15 @@ canvas { display:block; border-radius:16px; border:1px solid var(--border);
 </style>
 </head>
 <body>
-<h1>CPN 模型：<span id="pid"></span></h1>
-<div class="sub">着色 Petri 网</div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;">
+  <div>
+    <h1>CPN 模型：<span id="pid"></span></h1>
+    <div class="sub">着色 Petri 网</div>
+  </div>
+  <select id="theme-sel" style="padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--btn-b);background:var(--btn);color:var(--btn-t);font-family:inherit;letter-spacing:.04em;outline:none;transition:background .2s,color .2s,border-color .2s;" onchange="applyTheme(THEMES[this.selectedIndex])"></select>
+</div>
 <div class="canvas-outer">
 <canvas id="c"></canvas>
-</div>
-<div style="position:relative;margin-top:4px;">
-<select id="theme-sel" style="position:absolute;top:-36px;right:0;z-index:10;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--btn-b);background:var(--btn);color:var(--btn-t);font-family:inherit;letter-spacing:.04em;outline:none;transition:background .2s,color .2s,border-color .2s;" onchange="applyTheme(THEMES[this.selectedIndex])"></select>
 </div>
 <div class="row">
   <button id="btn-auto" onclick="toggleAuto()">▶ 自动运行</button>
