@@ -152,7 +152,7 @@ while (qi<bfsQ.length) {
 }
 allNodes.forEach(n => { if (depths[n.id]===undefined) depths[n.id]=0; });
 
-const COL=200, ROW=190, PX=110, PY=200;
+const COL=240, ROW=170, PX=100, PY=180;
 const spDepCnt={}, positions={};
 allNodes.forEach(n => {
   const sp=n.subproject||'_', d=depths[n.id]||0, key=`${sp}:${d}`;
@@ -173,14 +173,19 @@ data.places.forEach(pl => {
   }
 });
 
-const maxX=Math.max(...Object.values(positions).map(p=>p.x))+140;
-const maxY=Math.max(...Object.values(positions).map(p=>p.y))+120;
-const cW=Math.max(maxX,900), cH=Math.max(maxY,600);
+const maxX=Math.max(...Object.values(positions).map(p=>p.x))+130;
+const maxY=Math.max(...Object.values(positions).map(p=>p.y))+110;
+// 自适应窗口，不出现滚动条
+const availW = Math.min(window.innerWidth - 56, 960);
+const availH = Math.min(window.innerHeight - 220, 600);
+const scale = Math.min(availW / maxX, availH / maxY, 1);
+const cW = Math.round(maxX * scale);
+const cH = Math.round(maxY * scale);
 const dpr=window.devicePixelRatio||1;
 canvas.width=cW*dpr; canvas.height=cH*dpr;
 canvas.style.width=cW+'px'; canvas.style.height=cH+'px';
 const ctx=canvas.getContext('2d');
-ctx.scale(dpr,dpr);
+ctx.scale(dpr * scale, dpr * scale);
 
 // ── 变迁输入输出表（从 arcs 推导）──
 const tIn={}, tOut={};
@@ -231,7 +236,7 @@ function scheduleNext() {
     if (!firingId) {
       const en=getEnabled();
       if (!en.length) { setTimeout(()=>{ resetSim(); if(autoMode) scheduleNext(); },1400); return; }
-      fire(en[0]);
+      fire(en[Math.floor(Math.random()*en.length)]);
     }
     scheduleNext();
   }, 60);
