@@ -482,7 +482,7 @@ function draw(now) {
       const initVal=pl.initial_marking[0].replace(/^\d+`/,'');
       ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.font='bold 11px PingFang SC,sans-serif';
-      ctx.fillStyle=has?(T.dark?c.g+'99':c.s+'88'):(T.dark?c.s+'66':c.s+'99');
+      ctx.fillStyle=T.dark?'#e8f8f0':'#1a3028';
       ctx.fillText(initVal, p.x, p.y); ctx.restore();
     }
     // 圆内：有 token 时显示当前颜色值（在 token 点旁）
