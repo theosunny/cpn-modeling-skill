@@ -162,24 +162,13 @@ while (qi<bfsQ.length) {
 }
 allNodes.forEach(n => { if (depths[n.id]===undefined) depths[n.id]=0; });
 
-const COL=200, ROW=150, PX=80, PY=80;
+const COL=200, ROW=170, PX=80, PY=80;
 const spDepCnt={}, positions={};
 allNodes.forEach(n => {
   const sp=n.subproject||'_', d=depths[n.id]||0, key=`${sp}:${d}`;
   if (!spDepCnt[key]) spDepCnt[key]=0;
   const slot=spDepCnt[key]++;
   positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*60 };
-});
-
-// 资源库所：放在其主要消费变迁正上方（同 x，偏上 90px）
-resourcePlaceIds.forEach(pid => {
-  const firstConsumer = data.arcs.find(a => a.from === pid && a.to.startsWith('T'));
-  if (firstConsumer && positions[firstConsumer.to]) {
-    positions[pid] = {
-      x: positions[firstConsumer.to].x,
-      y: positions[firstConsumer.to].y - 90
-    };
-  }
 });
 
 // 固定画布：适配 13寸 MacBook（900×520）
