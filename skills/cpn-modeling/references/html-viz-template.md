@@ -143,8 +143,16 @@ const adj = {};
 data.arcs.forEach(a => { if (!adj[a.from]) adj[a.from]=[]; adj[a.from].push(a.to); });
 const hasIn = new Set(data.arcs.map(a => a.to));
 const depths = {};
-// 资源库所（有初始 token）强制从 depth=0 开始，避免循环弧导致深度爆炸
-const resourcePlaceIds = new Set(data.places.filter(p=>p.initial_marking&&p.initial_marking.length).map(p=>p.id));
+// 真正的资源库所：有初始 token，且同一变迁既消耗又归还（循环弧）
+// 入口库所（只被消耗，不归还）不算资源库所，不强制 depth=0
+const resourcePlaceIds = new Set(
+  data.places.filter(p => {
+    if (!p.initial_marking || !p.initial_marking.length) return false;
+    const consumers = data.arcs.filter(a => a.from === p.id && a.to.startsWith('T')).map(a => a.to);
+    const producers = data.arcs.filter(a => a.to === p.id && a.from.startsWith('T')).map(a => a.from);
+    return consumers.some(t => producers.includes(t));
+  }).map(p => p.id)
+);
 const bfsQ = allNodes.map(n=>n.id).filter(id => !hasIn.has(id) || resourcePlaceIds.has(id));
 bfsQ.forEach(id => depths[id]=0);
 let qi=0;
@@ -163,12 +171,11 @@ allNodes.forEach(n => {
   positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*60 };
 });
 
-// 资源库所位置修正：放在其主要消费变迁正上方（同 x，偏上 90px）
-data.places.forEach(pl => {
-  if (!pl.initial_marking || !pl.initial_marking.length) return;
-  const firstConsumer = data.arcs.find(a => a.from === pl.id && a.to.startsWith('T'));
+// 资源库所：放在其主要消费变迁正上方（同 x，偏上 90px）
+resourcePlaceIds.forEach(pid => {
+  const firstConsumer = data.arcs.find(a => a.from === pid && a.to.startsWith('T'));
   if (firstConsumer && positions[firstConsumer.to]) {
-    positions[pl.id] = {
+    positions[pid] = {
       x: positions[firstConsumer.to].x,
       y: positions[firstConsumer.to].y - 90
     };
