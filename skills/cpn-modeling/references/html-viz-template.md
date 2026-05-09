@@ -42,16 +42,7 @@ h1 { font-size:16px; font-weight:600; letter-spacing:.06em; }
 .sub { font-size:11px; color:var(--sub); margin-top:4px; letter-spacing:.04em; }
 canvas { display:block; border-radius:16px; border:1px solid var(--border);
   background:var(--cvs); transition:background .35s,border-color .35s;
-  box-shadow:0 4px 40px rgba(0,0,0,.08); margin-top:16px; }
-.row { display:flex; gap:7px; margin-top:13px; align-items:center; flex-wrap:wrap; }
-button { padding:5px 13px; border-radius:6px; font-size:11px; cursor:pointer;
-  border:1px solid var(--btn-b); background:var(--btn); color:var(--btn-t);
-  transition:all .15s; font-family:inherit; }
-button:hover { background:var(--btn-h); }
-button.active { background:var(--act); color:var(--act-t); border-color:var(--act); }
-.sep { width:1px; height:18px; background:var(--sep); margin:0 3px; }
-canvas { display:block; border-radius:16px; border:1px solid var(--border);
-  background:var(--cvs); transition:background .35s,border-color .35s; }
+  box-shadow:0 4px 40px rgba(0,0,0,.08); }
 .canvas-outer { overflow:auto; margin-top:16px; border-radius:16px;
   max-width:100%; max-height:520px;
   box-shadow:0 4px 40px rgba(0,0,0,.08); }
@@ -243,11 +234,27 @@ data.arcs.forEach(a => {
 });
 
 // ── 模拟状态 ──
-let tokenMap={}, particles=[], firingId=null, autoMode=false, autoTimer=null, stepMs=800;
+let tokenMap={}, tokenVal={}, particles=[], firingId=null, autoMode=false, autoTimer=null, stepMs=800;
+
+// 从弧 annotation 推导每个库所对应的颜色值
+const placeVal={};
+data.arcs.forEach(a => {
+  if (a.annotation) {
+    const v=a.annotation.replace(/^\d+`/,'');
+    if (a.from.startsWith('P')) placeVal[a.from]=v;
+    if (a.to.startsWith('P'))   placeVal[a.to]=v;
+  }
+});
+data.places.forEach(p => {
+  if (p.initial_marking&&p.initial_marking[0]) placeVal[p.id]=p.initial_marking[0].replace(/^\d+`/,'');
+});
 
 function resetSim() {
-  tokenMap={};
-  data.places.forEach(p => { tokenMap[p.id]=(p.initial_marking&&p.initial_marking.length)?p.initial_marking.length:0; });
+  tokenMap={}; tokenVal={};
+  data.places.forEach(p => {
+    tokenMap[p.id]=(p.initial_marking&&p.initial_marking.length)?p.initial_marking.length:0;
+    tokenVal[p.id]=placeVal[p.id]||'';
+  });
   particles=[]; firingId=null;
 }
 resetSim();
@@ -544,7 +551,7 @@ function draw(now) {
   particles.forEach(pk => {
     if (pk.done) return;
     pk.prog+=dt/dur;
-    if (pk.prog>=1) { pk.prog=1; pk.done=true; tokenMap[pk.toId]=(tokenMap[pk.toId]||0)+1; }
+    if (pk.prog>=1) { pk.prog=1; pk.done=true; tokenMap[pk.toId]=(tokenMap[pk.toId]||0)+1; tokenVal[pk.toId]=pk.val||''; }
     const pt=pathLerp(pk.path,pk.prog), pt0=pathLerp(pk.path,Math.max(0,pk.prog-.1));
     const c=ch[pk.chain]||Object.values(ch)[0];
     ctx.save();
