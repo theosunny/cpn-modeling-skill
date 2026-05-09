@@ -50,12 +50,11 @@ button { padding:5px 13px; border-radius:6px; font-size:11px; cursor:pointer;
 button:hover { background:var(--btn-h); }
 button.active { background:var(--act); color:var(--act-t); border-color:var(--act); }
 .sep { width:1px; height:18px; background:var(--sep); margin:0 3px; }
-.canvas-wrap { position:relative; display:inline-block; }
-#theme-sel { position:absolute; top:10px; right:10px; z-index:10;
-  padding:4px 8px; border-radius:6px; font-size:11px; cursor:pointer;
-  border:1px solid var(--btn-b); background:var(--btn); color:var(--btn-t);
-  font-family:inherit; letter-spacing:.04em; outline:none;
-  transition:background .2s,color .2s,border-color .2s; }
+canvas { display:block; border-radius:16px; border:1px solid var(--border);
+  background:var(--cvs); transition:background .35s,border-color .35s; }
+.canvas-outer { overflow:auto; margin-top:16px; border-radius:16px;
+  max-width:100%; max-height:520px;
+  box-shadow:0 4px 40px rgba(0,0,0,.08); }
 .legend { display:flex; gap:16px; margin-top:11px; font-size:11px; color:var(--dim); flex-wrap:wrap; align-items:center; }
 .li { display:flex; align-items:center; gap:5px; }
 </style>
@@ -63,9 +62,11 @@ button.active { background:var(--act); color:var(--act-t); border-color:var(--ac
 <body>
 <h1>CPN 模型：<span id="pid"></span></h1>
 <div class="sub">着色 Petri 网</div>
-<div class="canvas-wrap">
+<div class="canvas-outer">
 <canvas id="c"></canvas>
-<select id="theme-sel" onchange="applyTheme(THEMES[this.selectedIndex])"></select>
+</div>
+<div style="position:relative;margin-top:4px;">
+<select id="theme-sel" style="position:absolute;top:-36px;right:0;z-index:10;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--btn-b);background:var(--btn);color:var(--btn-t);font-family:inherit;letter-spacing:.04em;outline:none;transition:background .2s,color .2s,border-color .2s;" onchange="applyTheme(THEMES[this.selectedIndex])"></select>
 </div>
 <div class="row">
   <button id="btn-auto" onclick="toggleAuto()">▶ 自动运行</button>
@@ -184,7 +185,7 @@ resourcePlaceIds.forEach(pid => {
   dist[pid] = Math.max(0, minD - 1);
 });
 
-const COL=120, ROW=170, PX=80, PY=80;
+const COL=160, ROW=180, PX=80, PY=80;
 const spDepCnt={}, positions={};
 allNodes.forEach(n => {
   const sp=n.subproject||'_', d=dist[n.id]||0, key=`${sp}:${d}`;
@@ -193,16 +194,14 @@ allNodes.forEach(n => {
   positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*60 };
 });
 
-// 固定画布：适配 13寸 MacBook（900×520）
-const cW = 900, cH = 520;
-const maxX=Math.max(...Object.values(positions).map(p=>p.x))+100;
-const maxY=Math.max(...Object.values(positions).map(p=>p.y))+100;
-const scale = Math.min(cW / maxX, cH / maxY, 1.4);
+// 画布按内容自然大小，外层容器负责滚动
 const dpr=window.devicePixelRatio||1;
-canvas.width=cW*dpr; canvas.height=cH*dpr;
-canvas.style.width=cW+'px'; canvas.style.height=cH+'px';
+const maxX=Math.max(...Object.values(positions).map(p=>p.x))+120;
+const maxY=Math.max(...Object.values(positions).map(p=>p.y))+120;
+canvas.width=maxX*dpr; canvas.height=maxY*dpr;
+canvas.style.width=maxX+'px'; canvas.style.height=maxY+'px';
 const ctx=canvas.getContext('2d');
-ctx.scale(dpr * scale, dpr * scale);
+ctx.scale(dpr, dpr);
 
 // ── 变迁输入输出表（从 arcs 推导）──
 const tIn={}, tOut={};
@@ -230,11 +229,13 @@ function fire(t) {
   if (firingId) return;
   (tIn[t.id]||[]).forEach(pid => tokenMap[pid]--);
   firingId=t.id;
-  (tIn[t.id]||[]).forEach(fromId => {
-    (tOut[t.id]||[]).forEach(toId => {
-      const tp=positions[t.id];
-      particles.push({ path:[positions[fromId],tp,positions[toId]], prog:0, chain:t.chain, toId, done:false });
-    });
+  // 每条输出弧产生一个粒子（修复多输入变迁重复加 token 的 bug）
+  const tp=positions[t.id];
+  const srcVal=tokenVal[tIn[t.id][0]]||'';
+  (tOut[t.id]||[]).forEach(toId => {
+    const oarc=data.arcs.find(a=>a.from===t.id&&a.to===toId);
+    const oval=oarc?oarc.annotation.replace(/^\d+`/,''):srcVal;
+    particles.push({ path:[tp,positions[toId]], prog:0, chain:t.chain, toId, val:oval, done:false });
   });
 }
 
