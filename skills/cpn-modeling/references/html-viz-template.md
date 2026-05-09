@@ -392,6 +392,12 @@ function pathLerp(path, prog) {
   return path[path.length-1];
 }
 
+const DEP_STYLE = {
+  arc_sequence:   { color: null, dash:[],        lw:1.0, label:'顺序' },
+  fusion_place:   { color: null, dash:[6,4],     lw:1.4, label:'资源' },
+  guard_condition:{ color: null, dash:[3,3,8,3], lw:1.4, label:'守卫' },
+};
+
 // ── 主绘制循环 ──
 let lastT=0, frame=0;
 
@@ -446,11 +452,8 @@ function draw(now) {
   // arc_sequence: 已由 arcs 覆盖，跳过
   // fusion_place: 橙色虚线（资源依赖）
   // guard_condition: 红色点划线（跨链守卫）
-  const DEP_STYLE = {
-    arc_sequence:   { color: T.dark?'#6090e0':'#3060c0', dash:[],        lw:1.0, label:'顺序' },
-    fusion_place:   { color: T.dark?'#e09040':'#c07020', dash:[6,4],     lw:1.4, label:'资源' },
-    guard_condition:{ color: T.dark?'#e05050':'#c02020', dash:[3,3,8,3], lw:1.4, label:'守卫' },
-  };
+  DEP_STYLE.fusion_place.color    = T.dark?'#e09040':'#c07020';
+  DEP_STYLE.guard_condition.color = T.dark?'#e05050':'#c02020';
   (data.dependency_rules||[]).forEach(dep => {
     if (dep.mechanism === 'arc_sequence') return;
     const fromPos = positions[dep.predecessor], toPos = positions[dep.successor];
