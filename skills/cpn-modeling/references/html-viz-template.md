@@ -185,7 +185,7 @@ resourcePlaceIds.forEach(pid => {
   dist[pid] = Math.max(0, minD - 1);
 });
 
-const COL=160, SLOT_H=70, LANE_GAP=60, PX=80, PY=80;
+const COL=160, SLOT_H=100, LANE_GAP=60, PX=80, PY=80;
 
 // 第一遍：统计每条泳道在同一深度最多几个节点（决定泳道高度）
 const spMaxSlot={}, spDepCnt2={};
