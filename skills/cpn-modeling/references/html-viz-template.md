@@ -459,36 +459,40 @@ function draw(now) {
   });
 
   // 库所：CPN 标准布局
-  // - 颜色集合名称：圆外上方（小字，灰色）
-  // - 初始标记文字：圆内（无 token 时显示，浅色）
+  // - 初始标记值：圆外上方（替代颜色集合英文名，更直观）
+  // - 初始标记文字：圆内（始终显示，有 token 时被 token 点覆盖）
   // - 库所名称：圆外下方（两行）
   data.places.forEach(pl => {
     const p=positions[pl.id]; if(!p) return;
     const c=ch[pl.chain]||Object.values(ch)[0];
     const has=(tokenMap[pl.id]||0)>0;
 
-    // 颜色集合名称：圆外上方
+    // 圆外上方：初始标记值（CPN 标准：颜色集合注释位置，改为显示初始值更直观）
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='bottom';
     ctx.font='9px PingFang SC,sans-serif';
     ctx.fillStyle=T.dark?c.s+'88':c.s+'99';
-    ctx.fillText(pl.color, p.x, p.y-PR-4); ctx.restore();
+    const aboveText = pl.initial_marking&&pl.initial_marking.length
+      ? pl.initial_marking[0].replace(/^\d+`/,'')
+      : '';
+    if (aboveText) ctx.fillText(aboveText, p.x, p.y-PR-4);
+    ctx.restore();
 
-    // 圆内：初始标记（无 token 时显示）
-    if (!has && pl.initial_marking && pl.initial_marking.length) {
+    // 圆内：初始标记（始终显示，有 token 时被 token 点覆盖）
+    if (pl.initial_marking && pl.initial_marking.length) {
       const initVal=pl.initial_marking[0].replace(/^\d+`/,'');
       ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.font='10px PingFang SC,sans-serif';
-      ctx.fillStyle=T.dark?c.s+'55':c.s+'66';
+      ctx.font='bold 11px PingFang SC,sans-serif';
+      ctx.fillStyle=has?(T.dark?c.g+'99':c.s+'88'):(T.dark?c.s+'66':c.s+'99');
       ctx.fillText(initVal, p.x, p.y); ctx.restore();
     }
-    // 圆内：有 token 时显示颜色值
+    // 圆内：有 token 时显示当前颜色值（在 token 点旁）
     if (has) {
       const val=(typeof tokenVal!=='undefined'&&tokenVal[pl.id])||'';
       if (val) {
         ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font='bold 10px PingFang SC,sans-serif';
+        ctx.font='bold 11px PingFang SC,sans-serif';
         ctx.fillStyle=T.dark?c.g:c.s;
-        ctx.fillText(val, p.x, p.y+12); ctx.restore();
+        ctx.fillText(val, p.x, p.y+14); ctx.restore();
       }
     }
 
