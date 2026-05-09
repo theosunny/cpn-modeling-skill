@@ -82,8 +82,9 @@ button.active { background:var(--act); color:var(--act-t); border-color:var(--ac
   <div class="li"><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>库所</div>
   <div class="li"><svg width="16" height="10"><rect width="16" height="10" rx="2" fill="currentColor" opacity=".5"/></svg>变迁</div>
   <div class="li"><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>Token</div>
-  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="currentColor" stroke-width="1.5"/></svg>弧</div>
-  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4,3"/></svg>依赖</div>
+  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="currentColor" stroke-width="1.5"/></svg>顺序弧</div>
+  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="#c07020" stroke-width="1.5" stroke-dasharray="6,4"/></svg><span style="color:#c07020">资源依赖</span></div>
+  <div class="li"><svg width="26" height="3"><line x1="0" y1="1.5" x2="26" y2="1.5" stroke="#c02020" stroke-width="1.5" stroke-dasharray="3,3,8,3"/></svg><span style="color:#c02020">跨链守卫</span></div>
 </div>
 <script>
 const data = __CPN_DATA__;
@@ -266,8 +267,23 @@ function resetSim() {
 }
 resetSim();
 
+// guard_condition 依赖：predecessor 库所必须有 token（跨链守卫，不消耗）
+const guardDeps = {};
+(data.dependency_rules||[]).forEach(dep => {
+  if (dep.mechanism === 'guard_condition') {
+    if (!guardDeps[dep.successor]) guardDeps[dep.successor] = [];
+    guardDeps[dep.successor].push(dep.predecessor);
+  }
+});
+
 function getEnabled() {
-  return data.transitions.filter(t => (tIn[t.id]||[]).length>0 && (tIn[t.id]||[]).every(pid=>(tokenMap[pid]||0)>0));
+  return data.transitions.filter(t => {
+    if (!(tIn[t.id]||[]).length) return false;
+    if (!(tIn[t.id]||[]).every(pid=>(tokenMap[pid]||0)>0)) return false;
+    // guard_condition：守卫库所必须有 token，但不消耗
+    const guards = guardDeps[t.id]||[];
+    return guards.every(pid=>(tokenMap[pid]||0)>0);
+  });
 }
 
 function fire(t) {
@@ -426,6 +442,44 @@ function draw(now) {
     }
   });
 
+  // 2b. dependency_rules 可视化（按 ID 直查，不做字符串匹配）
+  // arc_sequence: 已由 arcs 覆盖，跳过
+  // fusion_place: 橙色虚线（资源依赖）
+  // guard_condition: 红色点划线（跨链守卫）
+  const DEP_STYLE = {
+    arc_sequence:   { color: T.dark?'#6090e0':'#3060c0', dash:[],        lw:1.0, label:'顺序' },
+    fusion_place:   { color: T.dark?'#e09040':'#c07020', dash:[6,4],     lw:1.4, label:'资源' },
+    guard_condition:{ color: T.dark?'#e05050':'#c02020', dash:[3,3,8,3], lw:1.4, label:'守卫' },
+  };
+  (data.dependency_rules||[]).forEach(dep => {
+    if (dep.mechanism === 'arc_sequence') return;
+    const fromPos = positions[dep.predecessor], toPos = positions[dep.successor];
+    if (!fromPos || !toPos) return;
+    const st = DEP_STYLE[dep.mechanism] || DEP_STYLE.fusion_place;
+    const s2 = edgePt(dep.predecessor, dep.successor, true);
+    const e2 = edgePt(dep.successor, dep.predecessor, false);
+    const dx=e2.x-s2.x, dy=e2.y-s2.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+    const ox=-dy/len*6, oy=dx/len*6;
+    ctx.save();
+    ctx.strokeStyle=st.color; ctx.lineWidth=st.lw;
+    ctx.setLineDash(st.dash); ctx.globalAlpha=0.75;
+    ctx.beginPath(); ctx.moveTo(s2.x+ox,s2.y+oy); ctx.lineTo(e2.x+ox,e2.y+oy); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    const ax=e2.x+ox, ay=e2.y+oy, ux=dx/len, uy=dy/len;
+    const hx=ax-ux*8, hy=ay-uy*8;
+    ctx.fillStyle=st.color;
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(hx-uy*4,hy+ux*4); ctx.lineTo(hx+uy*4,hy-ux*4);
+    ctx.closePath(); ctx.fill();
+    const mx2=(s2.x+e2.x)/2+ox, my2=(s2.y+e2.y)/2+oy;
+    ctx.font='9px PingFang SC,sans-serif';
+    const tw2=ctx.measureText(st.label).width;
+    ctx.fillStyle=T.dark?'rgba(10,10,10,.75)':'rgba(255,255,255,.82)';
+    ctx.fillRect(mx2-tw2/2-3, my2-7, tw2+6, 14);
+    ctx.fillStyle=st.color; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(st.label, mx2, my2);
+    ctx.restore();
+  });
+
   // 3. 变迁形状（填充确保文字可见）
   data.transitions.forEach(t => {
     const p=positions[t.id]; if(!p) return;
@@ -524,38 +578,7 @@ function draw(now) {
     lines.forEach((ln,i)=>ctx.fillText(ln,p.x,p.y+PR+6+i*lh)); ctx.restore();
   });
 
-  // 6. 依赖关系虚线（最后画，永远在最上层）
-  (data.dependency_rules||[]).forEach(dep => {
-    const fromP=data.places.find(p=>dep.predecessor.includes(p.name.replace('_',''))||dep.predecessor.includes(p.id));
-    const toTr=data.transitions.find(t=>dep.successor.includes(t.name)||dep.successor.includes(t.id));
-    if (!fromP||!toTr||!positions[fromP.id]||!positions[toTr.id]) return;
-    const fp=positions[fromP.id], tp=positions[toTr.id];
-    const dx=tp.x-fp.x, dy=tp.y-fp.y, len=Math.sqrt(dx*dx+dy*dy)||1;
-    const ux=dx/len, uy=dy/len, nx=-uy, ny=ux;
-    const off=dep.offset||-50;
-    const sx=fp.x+ux*PR, sy=fp.y+uy*PR;
-    const tsx=Math.abs(ux)<1e-6?1e9:(TW/2)/Math.abs(ux);
-    const tsy=Math.abs(uy)<1e-6?1e9:(TH/2)/Math.abs(uy);
-    const ts=Math.min(tsx,tsy);
-    const ex=tp.x-ux*ts, ey=tp.y-uy*ts;
-    const cpx=(sx+ex)/2+nx*off, cpy=(sy+ey)/2+ny*off;
-    ctx.save();
-    ctx.strokeStyle=T.dep+'cc'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
-    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.quadraticCurveTo(cpx,cpy,ex,ey); ctx.stroke();
-    ctx.setLineDash([]);
-    const tax2=ex-cpx, tay2=ey-cpy, tl=Math.sqrt(tax2*tax2+tay2*tay2)||1;
-    const tax=tax2/tl, tay=tay2/tl;
-    ctx.fillStyle=T.dep+'cc'; ctx.beginPath();
-    ctx.moveTo(ex,ey); ctx.lineTo(ex-tax*8-tay*4,ey-tay*8+tax*4); ctx.lineTo(ex-tax*8+tay*4,ey-tay*8-tax*4);
-    ctx.closePath(); ctx.fill();
-    const lx=0.25*sx+0.5*cpx+0.25*ex, ly=0.25*sy+0.5*cpy+0.25*ey;
-    ctx.font='bold 9px monospace';
-    const tw=ctx.measureText(dep.id).width;
-    ctx.fillStyle=T.dark?'rgba(0,0,0,.75)':'rgba(255,255,255,.85)';
-    ctx.fillRect(lx-tw/2-4,ly-8,tw+8,14);
-    ctx.fillStyle=T.dep; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(dep.id,lx,ly); ctx.restore();
-  });
+  // 6. 依赖关系（最后画，永远在最上层）— 已在步骤 2b 绘制，此处无需重复
 
   // 7. 粒子（线性进度，不会卡死）
   const dur=stepMs*0.001*0.65;
