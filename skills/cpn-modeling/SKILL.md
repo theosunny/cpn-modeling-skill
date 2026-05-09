@@ -156,7 +156,24 @@ description: 从自然语言业务场景描述中自动提取 CPN（着色 Petri
 
 **第三部分：HTML 可视化**（格式参考 `references/html-viz-template.md`）
 - 将 JSON 对象替换模板中的 `__CPN_DATA__`
-- 输出完整 HTML 后告知用户保存为 `.html` 文件用浏览器打开
+- 使用 Write 工具直接写入文件，**不要**把 HTML 内容输出到对话中
+- 写入路径：`/tmp/<project_id>.html`
+- 写入完成后，根据操作系统告知用户打开方式：
+
+**macOS：**
+```bash
+open /tmp/<project_id>.html
+```
+
+**Windows：**
+```powershell
+Start-Process /tmp/<project_id>.html
+```
+
+**Linux：**
+```bash
+xdg-open /tmp/<project_id>.html
+```
 
 ### 输出质量检查
 

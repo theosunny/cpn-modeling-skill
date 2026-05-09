@@ -143,7 +143,9 @@ const adj = {};
 data.arcs.forEach(a => { if (!adj[a.from]) adj[a.from]=[]; adj[a.from].push(a.to); });
 const hasIn = new Set(data.arcs.map(a => a.to));
 const depths = {};
-const bfsQ = allNodes.map(n=>n.id).filter(id => !hasIn.has(id));
+// 资源库所（有初始 token）强制从 depth=0 开始，避免循环弧导致深度爆炸
+const resourcePlaceIds = new Set(data.places.filter(p=>p.initial_marking&&p.initial_marking.length).map(p=>p.id));
+const bfsQ = allNodes.map(n=>n.id).filter(id => !hasIn.has(id) || resourcePlaceIds.has(id));
 bfsQ.forEach(id => depths[id]=0);
 let qi=0;
 while (qi<bfsQ.length) {
@@ -152,23 +154,37 @@ while (qi<bfsQ.length) {
 }
 allNodes.forEach(n => { if (depths[n.id]===undefined) depths[n.id]=0; });
 
-const COL=150, ROW=130, PX=80, PY=80;
+const COL=200, ROW=150, PX=80, PY=80;
 const spDepCnt={}, positions={};
 allNodes.forEach(n => {
   const sp=n.subproject||'_', d=depths[n.id]||0, key=`${sp}:${d}`;
   if (!spDepCnt[key]) spDepCnt[key]=0;
   const slot=spDepCnt[key]++;
-  positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*50 };
+  positions[n.id]={ x:PX+d*COL, y:PY+spList.indexOf(sp)*ROW+slot*60 };
 });
 
+// 资源库所位置修正：放在其主要消费变迁正上方（同 x，偏上 90px）
+data.places.forEach(pl => {
+  if (!pl.initial_marking || !pl.initial_marking.length) return;
+  const firstConsumer = data.arcs.find(a => a.from === pl.id && a.to.startsWith('T'));
+  if (firstConsumer && positions[firstConsumer.to]) {
+    positions[pl.id] = {
+      x: positions[firstConsumer.to].x,
+      y: positions[firstConsumer.to].y - 90
+    };
+  }
+});
+
+// 固定画布：适配 13寸 MacBook（900×520）
+const cW = 900, cH = 520;
 const maxX=Math.max(...Object.values(positions).map(p=>p.x))+100;
-const maxY=Math.max(...Object.values(positions).map(p=>p.y))+80;
-const cW=Math.max(maxX,600), cH=Math.max(maxY,400);
+const maxY=Math.max(...Object.values(positions).map(p=>p.y))+100;
+const scale = Math.min(cW / maxX, cH / maxY, 1.4);
 const dpr=window.devicePixelRatio||1;
 canvas.width=cW*dpr; canvas.height=cH*dpr;
 canvas.style.width=cW+'px'; canvas.style.height=cH+'px';
 const ctx=canvas.getContext('2d');
-ctx.scale(dpr,dpr);
+ctx.scale(dpr * scale, dpr * scale);
 
 // ── 变迁输入输出表（从 arcs 推导）──
 const tIn={}, tOut={};
@@ -219,7 +235,7 @@ function scheduleNext() {
     if (!firingId) {
       const en=getEnabled();
       if (!en.length) { setTimeout(()=>{ resetSim(); if(autoMode) scheduleNext(); },1400); return; }
-      fire(en[0]);
+      fire(en[Math.floor(Math.random()*en.length)]);
     }
     scheduleNext();
   }, 60);
@@ -234,7 +250,7 @@ function setSpeed(ms) {
 
 ```js
 // ── 绘制工具 ──
-const PR=26, TW=52, TH=30;
+const PR=28, TW=60, TH=32;
 
 function roundRect(x,y,w,h,r) {
   ctx.beginPath();
@@ -293,24 +309,36 @@ function draw(now) {
   spList.forEach((sp,i) => {
     const spNodes=allNodes.filter(n=>n.subproject===sp); if(!spNodes.length) return;
     const xs=spNodes.map(n=>positions[n.id].x), ys=spNodes.map(n=>positions[n.id].y);
-    const lx=Math.min(...xs)-40, ly=Math.min(...ys)-30, lw=Math.max(...xs)-lx+80, lh=Math.max(...ys)-ly+60;
+    const lx=Math.min(...xs)-50, ly=Math.min(...ys)-50, lw=Math.max(...xs)-lx+100, lh=Math.max(...ys)-ly+100;
     const c=Object.values(ch)[i%Object.keys(ch).length];
-    ctx.save(); ctx.globalAlpha=T.laneA; ctx.fillStyle=c.s; roundRect(lx,ly,lw,lh,10); ctx.fill();
+    ctx.save(); ctx.globalAlpha=T.laneA; ctx.fillStyle=c.s; roundRect(lx,ly,lw,lh,12); ctx.fill();
     ctx.globalAlpha=1; ctx.strokeStyle=c.s+(T.dark?'55':'44'); ctx.lineWidth=1; ctx.setLineDash([4,4]);
-    roundRect(lx,ly,lw,lh,10); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle=c.s+(T.dark?'99':'bb'); ctx.font='bold 10px PingFang SC,sans-serif';
-    ctx.fillText(sp,lx+10,ly+16); ctx.restore();
+    roundRect(lx,ly,lw,lh,12); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.s+(T.dark?'99':'bb'); ctx.font='bold 11px PingFang SC,sans-serif';
+    ctx.fillText(sp,lx+10,ly+18); ctx.restore();
   });
 
-  // 2. 普通弧（节点下层）
+  // 2. 普通弧（含弧表达式标注）
   data.arcs.forEach(a => {
     const node=data.places.find(p=>p.id===a.from)||data.transitions.find(t=>t.id===a.from);
     const c=ch[node?.chain]||Object.values(ch)[0];
     const s=edgePt(a.from,a.to,true), e=edgePt(a.to,a.from,false);
     arrow(s.x,s.y,e.x,e.y,c.s+(T.dark?'77':'88'),false,1.2);
+    if (a.annotation) {
+      const mx=(s.x+e.x)/2, my=(s.y+e.y)/2;
+      const dx=e.x-s.x, dy=e.y-s.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+      const nx=-dy/len, ny=dx/len, off=14;
+      const label=a.annotation.replace(/^\d+`/,'');
+      ctx.save(); ctx.font='9px PingFang SC,sans-serif';
+      const tw=ctx.measureText(label).width;
+      ctx.fillStyle=T.dark?'rgba(10,10,10,.8)':'rgba(255,255,255,.88)';
+      ctx.fillRect(mx+nx*off-tw/2-3, my+ny*off-7, tw+6, 14);
+      ctx.fillStyle=c.s+(T.dark?'':'cc'); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(label, mx+nx*off, my+ny*off); ctx.restore();
+    }
   });
 
-  // 3. 变迁形状
+  // 3. 变迁形状（填充确保文字可见）
   data.transitions.forEach(t => {
     const p=positions[t.id]; if(!p) return;
     const c=ch[t.chain]||Object.values(ch)[0];
@@ -318,14 +346,14 @@ function draw(now) {
     ctx.save();
     if (isFiring) { ctx.shadowColor=c.g; ctx.shadowBlur=22+Math.sin(frame*.15)*6; }
     else if (isEnabled) { ctx.shadowColor=c.g; ctx.shadowBlur=10; }
-    ctx.fillStyle=isFiring?c.g+'ee':(isEnabled?c.s+'cc':(T.dark?c.f:c.f+'cc'));
+    ctx.fillStyle=isFiring?c.g+'ee':(isEnabled?c.s+'cc':(T.dark?c.s+'33':c.f));
     roundRect(p.x-TW/2,p.y-TH/2,TW,TH,4); ctx.fill();
-    ctx.strokeStyle=isFiring?c.g:(isEnabled?c.g+'cc':c.s+(T.dark?'44':'55'));
-    ctx.lineWidth=isEnabled||isFiring?1.5:1;
+    ctx.strokeStyle=isFiring?c.g:(isEnabled?c.g+'cc':c.s+(T.dark?'88':'99'));
+    ctx.lineWidth=isEnabled||isFiring?2:1.2;
     roundRect(p.x-TW/2,p.y-TH/2,TW,TH,4); ctx.stroke(); ctx.restore();
   });
 
-  // 5. 库所形状
+  // 4. 库所形状
   data.places.forEach(pl => {
     const p=positions[pl.id]; if(!p) return;
     const c=ch[pl.chain]||Object.values(ch)[0];
@@ -345,25 +373,63 @@ function draw(now) {
     }
   });
 
-  // 6. 所有文字最后画（永不被遮挡）
+  // 5. 所有文字最后画（永不被遮挡）
+  // 变迁：名称在矩形内（CPN 标准），guard 在矩形下方
   data.transitions.forEach(t => {
     const p=positions[t.id]; if(!p) return;
     const c=ch[t.chain]||Object.values(ch)[0];
     const isFiring=firingId===t.id, isEnabled=!firingId&&getEnabled().some(e=>e.id===t.id);
-    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='10px PingFang SC,sans-serif';
-    ctx.fillStyle=isFiring?(T.dark?'#1a1000':'#fff8e8'):(isEnabled?(T.dark?'#e8d090':c.s):(T.dark?c.s+'cc':'#6a5a48'));
-    ctx.fillText(t.name.length>6?t.name.slice(0,6)+'…':t.name,p.x,p.y); ctx.restore();
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font='bold 11px PingFang SC,sans-serif';
+    ctx.fillStyle=isFiring?(T.dark?'#fff8e8':'#1a1000'):(isEnabled?(T.dark?'#e8f8f0':'#1a3a2a'):(T.dark?'#d0d8e0':'#2a3848'));
+    ctx.fillText(t.name.length>5?t.name.slice(0,5)+'…':t.name,p.x,p.y);
+    if (t.guard && t.guard!=='true') {
+      ctx.font='9px monospace'; ctx.fillStyle=T.dark?'#888':'#888';
+      ctx.fillText('['+t.guard+']', p.x, p.y+TH/2+10);
+    }
+    ctx.restore();
   });
 
+  // 库所：CPN 标准布局
+  // - 颜色集合名称：圆外上方（小字，灰色）
+  // - 初始标记文字：圆内（无 token 时显示，浅色）
+  // - 库所名称：圆外下方（两行）
   data.places.forEach(pl => {
     const p=positions[pl.id]; if(!p) return;
     const c=ch[pl.chain]||Object.values(ch)[0];
     const has=(tokenMap[pl.id]||0)>0;
-    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='10px PingFang SC,sans-serif';
-    ctx.fillStyle=has?(T.dark?'#d4b870':c.s):(T.dark?c.s+'88':'#9a8e80');
-    const lines=pl.name.split('_'), lh=13;
-    lines.forEach((ln,i)=>ctx.fillText(ln,p.x,p.y-(lines.length-1)*lh/2+i*lh));
-    ctx.restore();
+
+    // 颜色集合名称：圆外上方
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.font='9px PingFang SC,sans-serif';
+    ctx.fillStyle=T.dark?c.s+'88':c.s+'99';
+    ctx.fillText(pl.color, p.x, p.y-PR-4); ctx.restore();
+
+    // 圆内：初始标记（无 token 时显示）
+    if (!has && pl.initial_marking && pl.initial_marking.length) {
+      const initVal=pl.initial_marking[0].replace(/^\d+`/,'');
+      ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font='10px PingFang SC,sans-serif';
+      ctx.fillStyle=T.dark?c.s+'55':c.s+'66';
+      ctx.fillText(initVal, p.x, p.y); ctx.restore();
+    }
+    // 圆内：有 token 时显示颜色值
+    if (has) {
+      const val=(typeof tokenVal!=='undefined'&&tokenVal[pl.id])||'';
+      if (val) {
+        ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.font='bold 10px PingFang SC,sans-serif';
+        ctx.fillStyle=T.dark?c.g:c.s;
+        ctx.fillText(val, p.x, p.y+12); ctx.restore();
+      }
+    }
+
+    // 圆外下方：库所名称（两行）
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.font='11px PingFang SC,sans-serif';
+    ctx.fillStyle=has?(T.dark?'#d4c870':c.s):(T.dark?c.s+'aa':'#3a3028');
+    const lines=pl.name.split('_'), lh=14;
+    lines.forEach((ln,i)=>ctx.fillText(ln,p.x,p.y+PR+6+i*lh)); ctx.restore();
   });
 
   // 6. 依赖关系虚线（最后画，永远在最上层）
@@ -430,5 +496,5 @@ requestAnimationFrame(draw);
 1. 将 `__CPN_DATA__` 替换为 json-schema.md 格式的完整 JSON 对象
 2. `places` 中有初始 token 的库所必须在 `initial_marking` 中列出（如 `["1\`收费链"]`），否则多输入变迁永远无法触发
 3. 浏览器打开即可看到动态 Petri 网，支持自动运行、单步、重置、速度调节
-4. 右上角4套宋式主题可切换：天青（汝窑）/ 水墨（宋画）/ 松烟（建盏）/ 霁蓝（官窑）
+4. 右上角4套宋式主题可切换：天青（汝窑）/ 墨夜（极简）/ 石青（冷灰）/ 朱砂（暖白）
 5. 圆形=库所，矩形=变迁，实线=弧，红色虚线=依赖关系；可触发变迁发光提示
