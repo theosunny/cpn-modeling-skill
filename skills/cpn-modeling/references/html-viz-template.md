@@ -46,6 +46,13 @@ canvas { display:block; border-radius:16px; border:1px solid var(--border);
 .canvas-outer { overflow:auto; margin-top:16px; border-radius:16px;
   max-width:100%; max-height:520px;
   box-shadow:0 4px 40px rgba(0,0,0,.08); }
+.row { display:flex; gap:7px; margin-top:13px; align-items:center; flex-wrap:wrap; }
+button { padding:5px 13px; border-radius:6px; font-size:11px; cursor:pointer;
+  border:1px solid var(--btn-b); background:var(--btn); color:var(--btn-t);
+  transition:all .15s; font-family:inherit; }
+button:hover { background:var(--btn-h); }
+button.active { background:var(--act); color:var(--act-t); border-color:var(--act); }
+.sep { width:1px; height:18px; background:var(--sep); margin:0 3px; }
 .legend { display:flex; gap:16px; margin-top:11px; font-size:11px; color:var(--dim); flex-wrap:wrap; align-items:center; }
 .li { display:flex; align-items:center; gap:5px; }
 </style>
@@ -376,13 +383,17 @@ function draw(now) {
   const dt=Math.min((now-lastT)/1000,.05); lastT=now; frame++;
   ctx.clearRect(0,0,canvas.width,canvas.height);
   const ch=T.chains;
+  // 按泳道顺序分配链色（不依赖名称匹配，避免新模型链名不同时颜色错乱）
+  const chainColors=Object.values(ch);
+  const chainColorMap={};
+  spList.forEach((sp,i)=>{ chainColorMap[sp]=chainColors[i%chainColors.length]; });
 
   // 1. 泳道背景
   spList.forEach((sp,i) => {
     const spNodes=allNodes.filter(n=>n.subproject===sp); if(!spNodes.length) return;
     const xs=spNodes.map(n=>positions[n.id].x), ys=spNodes.map(n=>positions[n.id].y);
     const lx=Math.min(...xs)-50, ly=Math.min(...ys)-50, lw=Math.max(...xs)-lx+100, lh=Math.max(...ys)-ly+100;
-    const c=Object.values(ch)[i%Object.keys(ch).length];
+    const c=Object.values(ch)[i%chainColors.length];
     ctx.save(); ctx.globalAlpha=T.laneA; ctx.fillStyle=c.s; roundRect(lx,ly,lw,lh,12); ctx.fill();
     ctx.globalAlpha=1; ctx.strokeStyle=c.s+(T.dark?'55':'44'); ctx.lineWidth=1; ctx.setLineDash([4,4]);
     roundRect(lx,ly,lw,lh,12); ctx.stroke(); ctx.setLineDash([]);
@@ -393,7 +404,7 @@ function draw(now) {
   // 2. 普通弧（含弧表达式标注）
   data.arcs.forEach(a => {
     const node=data.places.find(p=>p.id===a.from)||data.transitions.find(t=>t.id===a.from);
-    const c=ch[node?.chain]||Object.values(ch)[0];
+    const c=chainColorMap[node?.chain]||chainColors[0];
     const s=edgePt(a.from,a.to,true), e=edgePt(a.to,a.from,false);
     const isReturn = returnArcSet.has(a.id);
     if (isReturn) {
@@ -418,7 +429,7 @@ function draw(now) {
   // 3. 变迁形状（填充确保文字可见）
   data.transitions.forEach(t => {
     const p=positions[t.id]; if(!p) return;
-    const c=ch[t.chain]||Object.values(ch)[0];
+    const c=chainColorMap[t.chain]||chainColors[0];
     const isFiring=firingId===t.id, isEnabled=!firingId&&getEnabled().some(e=>e.id===t.id);
     ctx.save();
     if (isFiring) { ctx.shadowColor=c.g; ctx.shadowBlur=22+Math.sin(frame*.15)*6; }
@@ -433,7 +444,7 @@ function draw(now) {
   // 4. 库所形状
   data.places.forEach(pl => {
     const p=positions[pl.id]; if(!p) return;
-    const c=ch[pl.chain]||Object.values(ch)[0];
+    const c=chainColorMap[pl.chain]||chainColors[0];
     const has=(tokenMap[pl.id]||0)>0;
     ctx.save(); ctx.beginPath(); ctx.arc(p.x,p.y,PR,0,Math.PI*2);
     ctx.fillStyle=has?c.f+(T.dark?'dd':'cc'):(T.dark?'#0d0c0a':'#f8f5f0'); ctx.fill();
@@ -454,7 +465,7 @@ function draw(now) {
   // 变迁：名称在矩形内（CPN 标准），guard 在矩形下方
   data.transitions.forEach(t => {
     const p=positions[t.id]; if(!p) return;
-    const c=ch[t.chain]||Object.values(ch)[0];
+    const c=chainColorMap[t.chain]||chainColors[0];
     const isFiring=firingId===t.id, isEnabled=!firingId&&getEnabled().some(e=>e.id===t.id);
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.font='bold 11px PingFang SC,sans-serif';
@@ -473,7 +484,7 @@ function draw(now) {
   // - 库所名称：圆外下方（两行）
   data.places.forEach(pl => {
     const p=positions[pl.id]; if(!p) return;
-    const c=ch[pl.chain]||Object.values(ch)[0];
+    const c=chainColorMap[pl.chain]||chainColors[0];
     const has=(tokenMap[pl.id]||0)>0;
 
     // 圆外上方：初始标记值（CPN 标准：颜色集合注释位置，改为显示初始值更直观）
@@ -553,7 +564,7 @@ function draw(now) {
     pk.prog+=dt/dur;
     if (pk.prog>=1) { pk.prog=1; pk.done=true; tokenMap[pk.toId]=(tokenMap[pk.toId]||0)+1; tokenVal[pk.toId]=pk.val||''; }
     const pt=pathLerp(pk.path,pk.prog), pt0=pathLerp(pk.path,Math.max(0,pk.prog-.1));
-    const c=ch[pk.chain]||Object.values(ch)[0];
+    const c=chainColorMap[pk.chain]||chainColors[0];
     ctx.save();
     ctx.strokeStyle=c.g+'55'; ctx.lineWidth=3;
     ctx.beginPath(); ctx.moveTo(pt0.x,pt0.y); ctx.lineTo(pt.x,pt.y); ctx.stroke();
