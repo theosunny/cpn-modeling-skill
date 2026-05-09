@@ -202,11 +202,16 @@ spList.forEach(sp => {
 });
 
 // 每条泳道高度 = maxSlots * SLOT_H，泳道间固定间隔 LANE_GAP
+// 泳道框绘制时上下各加 50px padding，所以：
+//   box_top    = spYStart - 50
+//   box_bottom = spYStart + (maxSlots-1)*SLOT_H + 100
+// 下一条泳道的 box_top 必须 >= 上一条 box_bottom + LANE_GAP
+// 即 next_spYStart = spYStart + (maxSlots-1)*SLOT_H + 100 + LANE_GAP + 50
 const spYStart={};
 let curY=PY;
 spList.forEach(sp => {
   spYStart[sp]=curY;
-  curY += spMaxSlot[sp]*SLOT_H + LANE_GAP;
+  curY = curY + (spMaxSlot[sp]-1)*SLOT_H + 150 + LANE_GAP;
 });
 
 // 第二遍：分配节点位置
