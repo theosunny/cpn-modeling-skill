@@ -1,6 +1,6 @@
 ---
 name: cpn-modeling
-description: 当用户描述业务流程并提到 CPN、Petri 网、建模、FS 规则、工序依赖、库所、变迁等关键词时触发。也适用于电商订单、餐厅点餐、审批流程、工程工序等场景，即使用户未明确提到 CPN，只要描述了实体间的先后依赖关系也应触发。当用户不懂 CPN 但想建模、或说"帮我画流程"、"我有个业务想建模"时，进入交互引导模式。
+description: 当用户描述业务流程并提到 CPN、Petri 网、建模、FS 规则、工序依赖、库所、变迁等关键词时触发。也适用于电商订单、餐厅点餐、审批流程、工程工序等场景，即使用户未明确提到 CPN，只要描述了实体间的先后依赖关系也应触发。当用户不懂 CPN 但想建模、或说"帮我画流程"、"我有个业务想建模"时也触发。
 ---
 
 # CPN 建模
@@ -161,21 +161,75 @@ description: 当用户描述业务流程并提到 CPN、Petri 网、建模、FS 
 
 **第三部分：HTML 可视化**（格式参考 `references/html-viz-template.md`）
 - 将 JSON 对象替换模板中的 `__CPN_DATA__`
-- 输出完整 HTML 后告知用户保存为 `.html` 文件用浏览器打开
+- 使用 Write 工具直接写入文件，**不要**把 HTML 内容输出到对话中
+- 写入路径：`/tmp/<project_id>.html`
+- 写入完成后，根据操作系统告知用户打开方式：
+
+**macOS：**
+```bash
+open /tmp/<project_id>.html
+```
+
+**Windows：**
+```powershell
+Start-Process /tmp/<project_id>.html
+```
+
+**Linux：**
+```bash
+xdg-open /tmp/<project_id>.html
+```
+
+### HTML 可视化 ⚠️ 关键约束（必读）
+
+生成 HTML 时必须严格遵循以下约束，否则会出现空白页面或运行卡死。
+
+**1. chain 与 subproject 名必须一致**
+- 模板的 `chainColorMap` 按 `subproject` 名建索引，绘制时通过 `node.chain` 查询
+- 若链名（如"挂号链"）≠ 阶段名（如"挂号阶段"），会导致所有节点颜色回退到链色[0]
+- **每条数据的 `chain` 和 `subproject` 字段值必须相同**（如都叫"挂号阶段"）
+- `THEMES[].chains` 的 key 也必须与 subproject 名一致
+
+**2. guard_condition 依赖必须指向库所 ID**
+- `dependency_rules` 中 `predecessor` 应为变迁的**输出库所** ID，非变迁 ID
+- `guardDeps` 检查的是 `tokenMap[pid]`，tokenMap 只存库所，不存变迁
+- 用变迁 ID 会导致守卫永远为 false，对应变迁永远无法触发 → 流程卡死
+
+**3. JS 语法必须 ES5/ES5.1 兼容**
+- 禁止用 `**` 幂运算符（用 `x*x` 或 `Math.pow`）
+- 禁止用 `??` 空值合并、`?.` 可选链
+- 禁止用 `for...of`（用 `forEach`）
+- 尽量用 `function(){}` 代替箭头函数（兼容旧浏览器）
+- 用 `Math.max.apply(null, arr)` 代替 `Math.max(...arr)`
+- 代码分离到多个 `<script>` 块中，每块加 `"use strict"`
+
+**4. 例子：正确的 guard_condition**
+```json
+// ❌ 错误：predecessor 是变迁 ID，tokenMap 里没有
+{ "id": "DEP3", "mechanism": "guard_condition", "predecessor": "T3", "successor": "T4" }
+
+// ✅ 正确：predecessor 是库所 ID（T3 的输出库所）
+{ "id": "DEP3", "mechanism": "guard_condition", "predecessor": "P5", "successor": "T4" }
+```
 
 ### 输出质量检查
 
 1. `dependency_rules` 是否覆盖所有"才能/完成后"依赖
 2. 多输入变迁的所有输入库所是否都能获得 token（防死锁）
-3. HTML 中 `__CPN_DATA__` 是否已替换为实际 JSON
+3. ⚠️ 写入 HTML 前确认 `__CPN_DATA__` 已替换为实际 JSON，不得输出含占位符的文件
 4. 每个 `<page>` 是否与 JSON 子项目一一对应
 5. 子项目是否按**角色链**划分（不是顺序阶段）——两个子项目能否同时有 token 流动？
 6. 每个人工参与者是否建模为资源库所（有初始 token，消耗后归还）
 7. 是否存在无意义变迁（只搬运 token，无资源消耗）——若有，合并库所或删除
+8. ⚠️ JSON 中 `chain` === `subproject`，且 THEMES chains key 匹配
+9. ⚠️ `guard_condition` 的 `predecessor` 必须是库所 ID（变迁的输出库所）
+10. ⚠️ JS 语法 ES5 兼容：无 `**`/`??`/`?.`/`for...of`/`...`展开
 
 ---
 
 ## 参考文件
+
+> 以下文件不会自动加载，需要时用 Read 工具主动读取。
 
 - 建模方法论：`references/modeling-guide.md`
 - 经典示例（餐厅点餐）：`references/example-restaurant.md`
